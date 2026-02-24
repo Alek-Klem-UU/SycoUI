@@ -13,6 +13,7 @@
     <RootNamespace>ThesisScraper</RootNamespace>
     <InterpreterId>
     </InterpreterId>
+    <SuppressEnvironmentCreationPrompt>True</SuppressEnvironmentCreationPrompt>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)' == 'Debug' ">
     <DebugSymbols>true</DebugSymbols>
@@ -23,14 +24,21 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="automated_browser.py" />
+    <Compile Include="ChatGPT_browser.py" />
+    <Compile Include="claude_browser.py" />
+    <Compile Include="deepseek_browser.py" />
+    <Compile Include="gemini_browser.py" />
     <Compile Include="data_processing.py" />
     <Compile Include="main.py" />
     <Compile Include="utils.py" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="RawData\DataSets\Gemini\BrokenMath.json" />
-    <Content Include="RawData\Prompts\Gemini\prompt.txt" />
+    <Content Include="RawData\DataSets\BrokenMath.json" />
+    <Content Include="RawData\Prompts\BrokenMath.txt" />
+    <Content Include="RawData\SavedData\ChatGPT\BrokenMath.json" />
+    <Content Include="RawData\SavedData\Claude\BrokenMath.json" />
+    <Content Include="RawData\SavedData\DeepSeek\BrokenMath.json" />
+    <Content Include="RawData\SavedData\Gemini\BrokenMath.json" />
     <Content Include="requirements.txt" />
   </ItemGroup>
   <ItemGroup>
@@ -44,6 +52,9 @@
     <Folder Include="RawData\SavedData\" />
     <Folder Include="RawData\Prompts\" />
     <Folder Include="RawData\SavedData\Gemini\" />
+    <Folder Include="RawData\SavedData\Claude\" />
+    <Folder Include="RawData\SavedData\DeepSeek\" />
+    <Folder Include="RawData\SavedData\ChatGPT\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in

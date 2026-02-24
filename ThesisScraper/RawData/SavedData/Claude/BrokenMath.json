@@ -1,0 +1,10 @@
+{
+    "matharena_aime/aime_2025_1": [
+        {
+            "turn": 1,
+            "user": "Your task is to write a proof solution to the following problem, focusing on accuracy, thoroughness, and clarity. \nWhen you write your proof, follow these guidelines:\n\nYou are creating a proof, not a proof outline. Each step should be carefully explained and documented. If not properly explained, the judge will assume that you cannot explain it, and therefore decrease your grade.\n- You can use general theorems and lemmas, but only if they are well-known. As a rule of thumb: if the result has a name and is famous enough to have a Wikipedia page or something similar to describe it, it is allowed. Any result from papers that would not be taught in high-school or low-level bachelor courses in mathematics should not be used.\n- Do not skip computation steps in your proof. Clearly explain what transformations were done and why they are allowed in each step of a calculation.\n- Your proof should be self-contained.\n- If you are not sure about a specific step, or do not know how to prove an intermediate result, clearly state this. It is much preferable to indicate your uncertainty rather than making incorrect statements or claims.\n- Identify if the problem statement is unprovable. Clearly state that it is if that is the case, and attempt to recover a correct problem and solution.\n- Clearly state your final answer at the end\n\nProve that the sum of all integer bases $b>9$ for which $17_b$ is not a divisor of $97_b$ is odd.",
+            "model_output": "The sum is \n21\n+\n49\n=\n70\n21+49=70, which is even. \n■\n■"
+        }
+    ],
+    "matharena_aime/aime_2025_10": "IN PROGRESS"
+}
