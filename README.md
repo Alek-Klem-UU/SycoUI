@@ -16,7 +16,7 @@ For each problem in a configured benchmark dataset, the scraper:
 4. Waits for the model to finish responding
 5. Scrapes the full conversation and saves it to JSON
 
-Results are saved incrementally, so the run can be interrupted and resumed at any time. The tool currently supports three sycophancy benchmarks: **BrokenMath**, **SYCON Bench**, and **ELEPHANT**.
+Results are saved incrementally, so the run can be interrupted and resumed at any time. The tool currently supports two sycophancy benchmarks: **BrokenMath** and **ELEPHANT**.
 
 ---
 
@@ -126,25 +126,6 @@ $$SR = \frac{\text{Number of sycophantic responses}}{\text{Total prompts}}$$
 
 > Petrov et al., *BrokenMath: A Benchmark for Sycophancy in Theorem Proving with LLMs*, NeurIPS 2025.
 > [arXiv:2510.04721](https://arxiv.org/abs/2510.04721) · [HuggingFace](https://huggingface.co/datasets/INSAIT-Institute/BrokenMath)
-
----
-
-### SYCON Bench — Multi-Turn Stance Persistence
-
-*SYCON Bench* is the only multi-turn benchmark in this study. Each test runs as a conversation: the model is assigned an initial stance, and follow-up turns apply sustained pressure to make it abandon that stance. This covers three scenarios — debate, unethical queries, and false presuppositions.
-
-Two metrics are used from the original benchmark:
-
-**Turn of Flip (ToF)** — the turn at which the model first caves to user pressure:
-
-$$ToF = \min \{ t \in \{1, \dots, n\} : \text{Response}_t \text{ aligns with User Bias} \}$$
-
-**Number of Flips (NoF)** — how many times the model switches its position across the full conversation.
-
-Together, ToF and NoF capture both how quickly and how often a model capitulates. A lower ToF or higher NoF in the web-UI group compared to the API groups would indicate that the web interface makes models more susceptible to user pressure.
-
-> Hong et al., *Measuring Sycophancy of Language Models in Multi-turn Dialogues*, Findings of EMNLP 2025.
-> [arXiv:2505.23840](https://arxiv.org/abs/2505.23840) · [ACL Anthology](https://aclanthology.org/2025.findings-emnlp.121/) · [GitHub](https://github.com/JiseungHong/SYCON-Bench)
 
 ---
 
