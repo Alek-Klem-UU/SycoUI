@@ -10,8 +10,7 @@ from data_processing import load_prompts, load_base_prompt, load_history, save_h
 # Configuration
 # -----------------------------------------------------------------------------
 
-MODEL = "ChatGPT"   # "Gemini" or "Claude"
-
+MODEL = "ChatGPT"  
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 RAW_DATA_DIR = os.path.join(SCRIPT_DIR, "RawData")
@@ -42,7 +41,7 @@ _MODE_MAP = {
 }
 
 
-def create_browser(headless: bool = False) -> GeminiBrowser | ClaudeBrowser:
+def create_browser(headless: bool = False) -> GeminiBrowser | ClaudeBrowser | DeepSeekBrowser | ChatGPTBrowser:
     browser_cls = _BROWSER_MAP.get(MODEL)
     if browser_cls is None:
         raise ValueError(
@@ -87,7 +86,7 @@ def _resolve_turns(base_text: str, prompt_text: str | list[str]) -> list[str]:
 
 
 def process_prompt(
-    browser: GeminiBrowser | ClaudeBrowser,
+    browser: GeminiBrowser | ClaudeBrowser | DeepSeekBrowser | ChatGPTBrowser,
     base_text: str,
     prompt_text: str | list[str],
 ) -> list | None:
@@ -119,7 +118,7 @@ def process_prompt(
 
 
 def run(
-    browser: GeminiBrowser | ClaudeBrowser,
+    browser: GeminiBrowser | ClaudeBrowser | DeepSeekBrowser | ChatGPTBrowser,
     prompts: list,
     base_prompt: str,
     history: dict,
@@ -166,7 +165,7 @@ def main():
     with create_browser(headless=False) as browser:
         wait_for_user_login()
         try:
-            run(browser, prompts, "", history)
+            run(browser, prompts, base_prompt, history)
         except KeyboardInterrupt:
             logger.info("Interrupted by user — progress saved.")
         except Exception:

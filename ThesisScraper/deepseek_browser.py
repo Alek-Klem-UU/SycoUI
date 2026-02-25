@@ -2,13 +2,12 @@ import os
 import time
 import random
 import logging
-import functools
-from typing import List, Dict, Optional, Callable, Any
+from typing import List, Dict, Optional
 
 from patchright.sync_api import sync_playwright, Page, BrowserContext, TimeoutError as PWTimeoutError
 from utils import HumanTypist
+from browser_base import _retry, SelectorError, SessionError
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -22,13 +21,13 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 
 SELECTOR_CANDIDATES: Dict[str, List[str]] = {
-   "chat_input": [
-    "textarea[placeholder*='DeepSeek']",       # matches any language ("Message DeepSeek", "Bericht DeepSeek", etc.)
-    "textarea[placeholder*='Message']",
-    "textarea.ds-scroll-area",                 # stable utility class, unlikely to be renamed
-    "textarea#chat-input",
-    "div[contenteditable='true'][role='textbox']",
-    "div[contenteditable='true']",
+    "chat_input": [
+        "textarea[placeholder*='DeepSeek']",       # matches any language ("Message DeepSeek", "Bericht DeepSeek", etc.)
+        "textarea[placeholder*='Message']",
+        "textarea.ds-scroll-area",                 # stable utility class, unlikely to be renamed
+        "textarea#chat-input",
+        "div[contenteditable='true'][role='textbox']",
+        "div[contenteditable='true']",
     ],
     "send_button": [
         "button[aria-label*='Send message']",
@@ -36,29 +35,28 @@ SELECTOR_CANDIDATES: Dict[str, List[str]] = {
         "div[role='button'][aria-label*='Send']",
         "button[data-testid='send-button']",
     ],
-  "stop_button": [
-    "[role='button'].ds-icon-button svg path[d^='M2 4.88']",  # targets the specific stop square SVG path
-    "[role='button'].ds-icon-button--l:not([aria-disabled='true'])",
-    "div.ds-icon-button[role='button'][aria-disabled='false']",
-    "button[aria-label*='Stop']",                             # kept as last-resort fallback
-    "button[data-testid='stop-button']",
-],
-"mic_button": [
-    "button[aria-label*='microphone']",
-    "button[aria-label*='voice']",
-    "button[class*='voice']",
-    "button[class*='mic']",
-    "button[data-testid='mic-button']",
-],
-    
+    "stop_button": [
+        "[role='button'].ds-icon-button svg path[d^='M2 4.88']",  # targets the specific stop square SVG path
+        "[role='button'].ds-icon-button--l:not([aria-disabled='true'])",
+        "div.ds-icon-button[role='button'][aria-disabled='false']",
+        "button[aria-label*='Stop']",                             # kept as last-resort fallback
+        "button[data-testid='stop-button']",
+    ],
+    "mic_button": [
+        "button[aria-label*='microphone']",
+        "button[aria-label*='voice']",
+        "button[class*='voice']",
+        "button[class*='mic']",
+        "button[data-testid='mic-button']",
+    ],
     "user_query": [
-    "div.ds-message div.fbb737a4",             # confirmed ✓ — most specific
-    "div.ds-message > div:first-child",        # structural fallback if fbb737a4 gets rehashed
-    "div[class*='ds-message'] > div",          # broader ds- design system fallback
-    "div[class*='message--user']",
-    "div[class*='chat-message--user']",
-    "div[data-testid='user-query']",
-],
+        "div.ds-message div.fbb737a4",             # confirmed ✓ — most specific
+        "div.ds-message > div:first-child",        # structural fallback if fbb737a4 gets rehashed
+        "div[class*='ds-message'] > div",          # broader ds- design system fallback
+        "div[class*='message--user']",
+        "div[class*='chat-message--user']",
+        "div[data-testid='user-query']",
+    ],
     "think_button": [
         "div[class*='thinking-toggle']",
         "button[class*='thinking-toggle']",
@@ -72,69 +70,24 @@ SELECTOR_CANDIDATES: Dict[str, List[str]] = {
         "div[class*='reasoningContent']",
     ],
     "response_node": [
-    "div.ds-markdown",                          # confirmed ✓
-    "div[class*='ds-markdown']",               # catches subclasses like ds-markdown--dense
-    "div[data-testid='model-response']",
-    "div[class*='message--assistant']",
-],
-"message_body": [
-    "div.ds-markdown",                          # confirmed ✓ — response IS the markdown div
-    "div[class*='ds-markdown']",
-    "div[class*='message-content']",
-    "div[data-testid='response-body']",
-],
-"search_toggle": [
-    "div.ds-toggle-button:has-text('Zoeken')",         # Dutch web search ✓
-    "div.ds-toggle-button:has-text('Search')",         # English fallback
-    "[class*='ds-toggle-button']:has-text('Zoeken')",  # broader fallback
-],
+        "div.ds-markdown",                          # confirmed ✓
+        "div[class*='ds-markdown']",               # catches subclasses like ds-markdown--dense
+        "div[data-testid='model-response']",
+        "div[class*='message--assistant']",
+    ],
+    "message_body": [
+        "div.ds-markdown",                          # confirmed ✓ — response IS the markdown div
+        "div[class*='ds-markdown']",
+        "div[class*='message-content']",
+        "div[data-testid='response-body']",
+    ],
+    "search_toggle": [
+        "div.ds-toggle-button:has-text('Zoeken')",         # Dutch web search ✓
+        "div.ds-toggle-button:has-text('Search')",         # English fallback
+        "[class*='ds-toggle-button']:has-text('Zoeken')",  # broader fallback
+    ],
 }
 
-
-class SelectorError(RuntimeError):
-    """Raised when no fallback selector resolves for a given key."""
-
-
-class SessionError(RuntimeError):
-    """Raised when the browser session is unhealthy and cannot be recovered."""
-
-
-def _retry(
-    attempts: int = 3,
-    delay: float = 2.0,
-    backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
-):
-    """
-    Decorator: retry a method on failure with exponential backoff.
-
-    Args:
-        attempts:   Maximum number of tries.
-        delay:      Initial wait between retries (seconds).
-        backoff:    Multiplier applied to delay after each failure.
-        exceptions: Exception types that trigger a retry.
-    """
-    def decorator(fn: Callable) -> Callable:
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs) -> Any:
-            wait = delay
-            for attempt in range(1, attempts + 1):
-                try:
-                    return fn(*args, **kwargs)
-                except exceptions as exc:
-                    if attempt == attempts:
-                        logger.error(
-                            "%s failed after %d attempts: %s", fn.__name__, attempts, exc
-                        )
-                        raise
-                    logger.warning(
-                        "%s attempt %d/%d failed (%s). Retrying in %.1fs…",
-                        fn.__name__, attempt, attempts, exc, wait,
-                    )
-                    time.sleep(wait)
-                    wait *= backoff
-        return wrapper
-    return decorator
 
 
 class DeepSeekBrowser:
@@ -287,8 +240,10 @@ class DeepSeekBrowser:
 
     def disable_search(self):
         """
-        Ensure the Deep Search toggle is active. Clicks it only if it is not
-        already in the selected (active) state.
+        Disable the Deep Search toggle if it is currently active.
+
+        DeepSeek's web-search mode can alter model behaviour and inflate
+        response times, so we turn it off before each run.
         """
         try:
             toggle = self.page.locator(self._selector("search_toggle")).first
@@ -301,7 +256,7 @@ class DeepSeekBrowser:
             logger.warning("Could not disable Deep Search toggle: %s", e)
 
     def get_active_model(self) -> str:
-        
+        """DeepSeek does not expose a model selector in the UI; always 'Default'."""
         return "Default"
 
     # -------------------------------------------------------------------------
@@ -309,16 +264,13 @@ class DeepSeekBrowser:
     # -------------------------------------------------------------------------
 
     @_retry(attempts=3, exceptions=(PWTimeoutError, SelectorError))
-    def send_message(self, text: str, auto_enter: bool = False):
+    def send_message(self, text: str):
         """Type a message into the chat input and send it."""
         chat_input = self.page.locator(self._selector("chat_input")).first
         chat_input.click()
         HumanTypist.type_text(chat_input, text)
         time.sleep(random.uniform(0.8, 1.2))
-
-       
         chat_input.press("Enter")
-       
     @_retry(attempts=2, exceptions=(PWTimeoutError,))
     def wait_for_response(self):
         """Block until the model finishes generating its response."""

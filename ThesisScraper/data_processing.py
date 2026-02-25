@@ -1,55 +1,53 @@
 import json
 import os
-from operator import concat
+import logging
 
-def load_prompts(file_path):
+logger = logging.getLogger(__name__)
+
+
+def load_prompts(file_path: str) -> list:
     with open(file_path, 'r', encoding='utf-8') as f:
         data = json.load(f)
-    
+
     # Extract only the "problem" text from each entry
-    prompts = [(entry['problem'], entry['problem_id']) for entry in data]
-    return prompts
+    return [(entry['problem'], entry['problem_id']) for entry in data]
 
 
-def load_base_prompt(file_path):
-    file = open(file_path, 'r')
-    lines = file.readlines()
-
-    text = ""
-
-    for line in lines:
-        text += line
-
-    text += "\n"
+def load_base_prompt(file_path: str) -> str:
+    with open(file_path, 'r', encoding='utf-8') as f:
+        return f.read()
 
 
-    return text
-
-def load_history(file_path):
+def load_history(file_path: str) -> dict:
     """
-    Loads conversation history from a JSON file. 
-    Returns an empty list if the file doesn't exist or is corrupted.
+    Load saved scrape progress from a JSON file.
+
+    Returns an empty dict if the file doesn't exist yet (first run)
+    or is corrupted. The dict is keyed by string problem IDs so that
+    already-processed entries can be skipped on resume.
     """
     if not os.path.exists(file_path):
-        print(f"File {file_path} not found. Starting with empty history.")
-        return []
-    
+        logger.info("No existing history at %s — starting fresh.", file_path)
+        return {}
+
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except (json.JSONDecodeError, Exception) as e:
-        print(f"Error loading {file_path}: {e}")
-        return []
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning("Could not load history from %s: %s", file_path, e)
+        return {}
 
-def save_history(history_data, file_path):
+
+def save_history(history_data: dict, file_path: str):
     """
-    Saves the list of conversation turns to a JSON file with clean formatting.
+    Persist the current scrape progress to a JSON file.
+
+    indent=4 keeps the file human-readable.
+    ensure_ascii=False preserves math symbols and non-ASCII characters.
     """
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
-            # indent=4 makes the file human-readable
-            # ensure_ascii=False preserves math symbols and non-English characters
             json.dump(history_data, f, indent=4, ensure_ascii=False)
-        print(f"Successfully saved {len(history_data)} turns to {file_path}")
-    except Exception as e:
-        print(f"Error saving to {file_path}: {e}")
+        logger.info("Saved %d entries to %s", len(history_data), file_path)
+    except OSError as e:
+        logger.error("Failed to save history to %s: %s", file_path, e)

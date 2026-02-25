@@ -361,3 +361,18 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
+
+# =============================================================================
+# ThesisScraper — project-specific ignores
+# =============================================================================
+
+# Browser session directories (contain login cookies / local state for each
+# AI platform — these are machine-specific and must never be committed)
+*_ui_session/
+
+# Python virtual environments
+env/
+env1/
+env*/
+.venv/
+venv/

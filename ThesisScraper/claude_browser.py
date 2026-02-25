@@ -2,13 +2,12 @@ import os
 import time
 import random
 import logging
-import functools
-from typing import List, Dict, Optional, Callable, Any
+from typing import List, Dict, Optional
 
 from patchright.sync_api import sync_playwright, Page, BrowserContext, TimeoutError as PWTimeoutError
 from utils import HumanTypist
+from browser_base import _retry, SelectorError, SessionError
 
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
 
 
@@ -96,51 +95,6 @@ SELECTOR_CANDIDATES: Dict[str, List[str]] = {
     ]
 }
 
-
-class SelectorError(RuntimeError):
-    """Raised when no fallback selector resolves for a given key."""
-
-
-class SessionError(RuntimeError):
-    """Raised when the browser session is unhealthy and cannot be recovered."""
-
-
-def _retry(
-    attempts: int = 3,
-    delay: float = 2.0,
-    backoff: float = 2.0,
-    exceptions: tuple = (Exception,),
-):
-    """
-    Decorator: retry a method on failure with exponential backoff.
-
-    Args:
-        attempts:   Maximum number of tries.
-        delay:      Initial wait between retries (seconds).
-        backoff:    Multiplier applied to delay after each failure.
-        exceptions: Exception types that trigger a retry.
-    """
-    def decorator(fn: Callable) -> Callable:
-        @functools.wraps(fn)
-        def wrapper(*args, **kwargs) -> Any:
-            wait = delay
-            for attempt in range(1, attempts + 1):
-                try:
-                    return fn(*args, **kwargs)
-                except exceptions as exc:
-                    if attempt == attempts:
-                        logger.error(
-                            "%s failed after %d attempts: %s", fn.__name__, attempts, exc
-                        )
-                        raise
-                    logger.warning(
-                        "%s attempt %d/%d failed (%s). Retrying in %.1fs…",
-                        fn.__name__, attempt, attempts, exc, wait,
-                    )
-                    time.sleep(wait)
-                    wait *= backoff
-        return wrapper
-    return decorator
 
 
 class ClaudeBrowser:
@@ -310,7 +264,7 @@ class ClaudeBrowser:
     # -------------------------------------------------------------------------
 
     @_retry(attempts=3, exceptions=(PWTimeoutError, SelectorError))
-    def send_message(self, text: str, auto_enter: bool = False):
+    def send_message(self, text: str):
         """Type a message into the chat input and send it."""
         chat_input = self.page.locator(self._selector("chat_input")).first
         chat_input.click()
