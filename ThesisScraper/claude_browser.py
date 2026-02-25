@@ -6,7 +6,7 @@ from typing import List, Dict, Optional
 
 from patchright.sync_api import sync_playwright, Page, BrowserContext, TimeoutError as PWTimeoutError
 from utils import HumanTypist
-from browser_base import _retry, SelectorError, SessionError
+from browser_base import BaseBrowser, _retry, SelectorError, SessionError
 
 logger = logging.getLogger(__name__)
 
@@ -97,7 +97,7 @@ SELECTOR_CANDIDATES: Dict[str, List[str]] = {
 
 
 
-class ClaudeBrowser:
+class ClaudeBrowser(BaseBrowser):
     _WINDOW_WIDTH  = 500
     _WINDOW_HEIGHT = 700
     _CLAUDE_URL    = "https://claude.ai/new"
@@ -125,12 +125,6 @@ class ClaudeBrowser:
         self.timeouts = {**self.DEFAULT_TIMEOUTS, **(timeouts or {})}
         self._setup(headless)
         self.page.goto(self._CLAUDE_URL_LOGIN)
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
 
     # -------------------------------------------------------------------------
     # Setup

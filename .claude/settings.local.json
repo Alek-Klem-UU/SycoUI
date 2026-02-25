@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(grep patchright\\\\|playwright\\\\|selenium:*)",
+      "Bash(cd:*)",
+      "Bash(tail:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:commons.wikimedia.org)"
+    ]
+  }
+}

@@ -370,6 +370,9 @@ FodyWeavers.xsd
 # AI platform — these are machine-specific and must never be committed)
 *_ui_session/
 
+# Run logs (timestamped per run, machine-specific)
+ThesisScraper/logs/
+
 # Python virtual environments
 env/
 env1/

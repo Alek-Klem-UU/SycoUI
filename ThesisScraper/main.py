@@ -1,23 +1,26 @@
 import os
+import datetime
 import logging
 from gemini_browser import GeminiBrowser
 from claude_browser import ClaudeBrowser
 from deepseek_browser import DeepSeekBrowser
 from ChatGPT_browser import ChatGPTBrowser
-from data_processing import load_prompts, load_base_prompt, load_history, save_history
+from browser_base import BaseBrowser
+from data_processing import load_prompts, load_base_prompt, load_history, save_history, count_total_tokens
 
 # -----------------------------------------------------------------------------
 # Configuration
 # -----------------------------------------------------------------------------
 
-MODEL = "ChatGPT"  
+# MODEL and SAVE_DATA_PATH are set at runtime by select_model() in main().
+MODEL          = ""
+SAVE_DATA_PATH = ""
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 RAW_DATA_DIR = os.path.join(SCRIPT_DIR, "RawData")
 
-DATA_SET_PATH    = os.path.join(RAW_DATA_DIR, "DataSets", "BrokenMath.json")
-BASE_PROMPT_PATH = os.path.join(RAW_DATA_DIR, "Prompts",  "BrokenMath.txt")
-SAVE_DATA_PATH   = os.path.join(RAW_DATA_DIR, "SavedData", MODEL, "BrokenMath.json")
+DATA_SET_PATH    = os.path.join(RAW_DATA_DIR, "DataSets", "Elephant.json")
+BASE_PROMPT_PATH = os.path.join(RAW_DATA_DIR, "Prompts",  "Elephant.txt")
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -27,21 +30,70 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 
 _BROWSER_MAP = {
-    "Gemini": GeminiBrowser,
-    "Claude": ClaudeBrowser,
+    "Gemini":   GeminiBrowser,
+    "Claude":   ClaudeBrowser,
     "DeepSeek": DeepSeekBrowser,
-    "ChatGPT": ChatGPTBrowser,
+    "ChatGPT":  ChatGPTBrowser,
 }
 
 _MODE_MAP = {
-    "Gemini": "Fast",
-    "Claude": "Sonnet 4.6",
+    "Gemini":   "Fast",
+    "Claude":   "Sonnet 4.6",
     "DeepSeek": "Default",
-    "ChatGPT" : "ChatGPT"
+    "ChatGPT":  "ChatGPT",
 }
 
+# -----------------------------------------------------------------------------
+# Startup selection
+# -----------------------------------------------------------------------------
 
-def create_browser(headless: bool = False) -> GeminiBrowser | ClaudeBrowser | DeepSeekBrowser | ChatGPTBrowser:
+def select_model() -> str:
+    """
+    Show a numbered menu and return the model name the user picks.
+
+    Keeps looping until a valid number is entered, so a mis-press
+    doesn't crash the script.
+    """
+    options = list(_BROWSER_MAP.keys())
+    print()
+    print("=" * 50)
+    print("  SycoUI — Select a model")
+    print("=" * 50)
+    for i, name in enumerate(options, 1):
+        print(f"  {i}. {name}  (mode: {_MODE_MAP[name]})")
+    print()
+
+    while True:
+        choice = input(f"Enter number (1-{len(options)}): ").strip()
+        if choice.isdigit() and 1 <= int(choice) <= len(options):
+            selected = options[int(choice) - 1]
+            print(f"\nSelected: {selected}")
+            return selected
+        print(f"  Invalid — please enter a number between 1 and {len(options)}.")
+
+
+def _setup_file_logging():
+    """
+    Add a timestamped file handler to the root logger.
+
+    A separate log file is created for each run so that long overnight
+    scrapes have a persistent record for debugging after the fact.
+    The filename includes the model name so runs are easy to tell apart.
+    """
+    log_dir = os.path.join(SCRIPT_DIR, "logs")
+    os.makedirs(log_dir, exist_ok=True)
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H%M%S")
+    log_path = os.path.join(log_dir, f"{MODEL}_{timestamp}.log")
+    handler = logging.FileHandler(log_path, encoding="utf-8")
+    handler.setFormatter(logging.Formatter("[%(levelname)s] %(message)s"))
+    logging.getLogger().addHandler(handler)
+    logger.info("Logging to %s", log_path)
+
+# -----------------------------------------------------------------------------
+# Browser Factory
+# -----------------------------------------------------------------------------
+
+def create_browser(headless: bool = False) -> BaseBrowser:
     browser_cls = _BROWSER_MAP.get(MODEL)
     if browser_cls is None:
         raise ValueError(
@@ -86,7 +138,7 @@ def _resolve_turns(base_text: str, prompt_text: str | list[str]) -> list[str]:
 
 
 def process_prompt(
-    browser: GeminiBrowser | ClaudeBrowser | DeepSeekBrowser | ChatGPTBrowser,
+    browser: BaseBrowser,
     base_text: str,
     prompt_text: str | list[str],
 ) -> list | None:
@@ -118,7 +170,7 @@ def process_prompt(
 
 
 def run(
-    browser: GeminiBrowser | ClaudeBrowser | DeepSeekBrowser | ChatGPTBrowser,
+    browser: BaseBrowser,
     prompts: list,
     base_prompt: str,
     history: dict,
@@ -137,22 +189,25 @@ def run(
         save_history(history, SAVE_DATA_PATH)
 
         result = process_prompt(browser, base_prompt, prompt_text)
-        
+
         if result is None:
             logger.warning("Aborting run due to mode mismatch.")
             return
 
         history[str_id] = result
-       
         save_history(history, SAVE_DATA_PATH)
         logger.info("Saved ID %s.", str_id)
-       
 
 # -----------------------------------------------------------------------------
 # Entry Point
 # -----------------------------------------------------------------------------
 
 def main():
+    global MODEL, SAVE_DATA_PATH
+    MODEL = select_model()
+    SAVE_DATA_PATH = os.path.join(RAW_DATA_DIR, "SavedData", MODEL, "BrokenMath.json")
+
+    _setup_file_logging()
     try:
         validate_resources()
         base_prompt = load_base_prompt(BASE_PROMPT_PATH)
@@ -161,6 +216,16 @@ def main():
     except Exception as e:
         logger.error("Initialization failed: %s", e)
         return
+
+    tok = count_total_tokens(prompts, base_prompt)
+    logger.info(
+        "Dataset: %d prompts | tokens — total: %s  avg: %s  min: %s  max: %s",
+        tok["count"],
+        f"{tok['total']:,}",
+        f"{tok['avg']:,}",
+        f"{tok['min']:,}",
+        f"{tok['max']:,}",
+    )
 
     with create_browser(headless=False) as browser:
         wait_for_user_login()

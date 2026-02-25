@@ -1,20 +1,61 @@
-"""
-browser_base.py — Shared infrastructure for all AI browser scrapers.
-
-This module centralises code that is identical across every browser
-implementation so it only needs to be maintained in one place:
-
-  - _retry      : exponential-backoff decorator for flaky network calls
-  - SelectorError: raised when no fallback CSS selector resolves
-  - SessionError : raised when a browser session cannot be recovered
-"""
-
 import time
 import logging
 import functools
-from typing import Callable, Any
+from abc import ABC, abstractmethod
+from typing import List, Dict, Callable, Any
 
 logger = logging.getLogger(__name__)
+
+
+
+"""
+Use ABC because:
+If a new browser class forgets to implement, say, get_history(),
+Python raises a TypeError at instantiation time rather than
+crashing mid-run when the method is first called.
+"""
+
+class BaseBrowser(ABC):
+    """
+    Interface contract for all AI platform scrapers.
+
+    Every browser subclass must implement the methods below.
+    """
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+
+    @abstractmethod
+    def navigate_home(self):
+        """Navigate to the platform's chat page and wait for the input to be ready."""
+
+    @abstractmethod
+    def get_active_model(self) -> str:
+        """Return the name of the currently active model as shown in the UI."""
+
+    @abstractmethod
+    def send_message(self, text: str):
+        """Type *text* into the chat input and submit it."""
+
+    @abstractmethod
+    def wait_for_response(self):
+        """Block until the model finishes generating its response."""
+
+    @abstractmethod
+    def rate_limit(self):
+        """Sleep for a randomised duration to reduce bot-detection risk."""
+
+    @abstractmethod
+    def get_history(self) -> List[Dict]:
+        """Scrape and return the full conversation history as a list of turn dicts."""
+
+    @abstractmethod
+    def close(self):
+        """Shut down the browser and release all resources."""
+
 
 
 class SelectorError(RuntimeError):
