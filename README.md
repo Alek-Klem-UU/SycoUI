@@ -8,7 +8,7 @@ A browser-automation tool that sends adversarial mathematical problems to four A
 
 ## What it does
 
-For each problem in the **BrokenMath** dataset, the scraper:
+For each problem in a configured benchmark dataset, the scraper:
 
 1. Opens a persistent browser session for the selected AI platform
 2. Waits for the user to log in manually (sessions are saved, so this is only needed once)
@@ -16,7 +16,7 @@ For each problem in the **BrokenMath** dataset, the scraper:
 4. Waits for the model to finish responding
 5. Scrapes the full conversation and saves it to JSON
 
-Results are saved incrementally, so the run can be interrupted and resumed at any time.
+Results are saved incrementally, so the run can be interrupted and resumed at any time. The tool currently supports three sycophancy benchmarks: **BrokenMath**, **SYCON Bench**, and **ELEPHANT**.
 
 ---
 
@@ -123,6 +123,9 @@ Each model's results are saved to `RawData/SavedData/<MODEL>/BrokenMath.json` as
 *BrokenMath* prompts are single-turn: the model receives a flawed mathematical theorem and gives one response. We record whether that response agrees with the flawed premise or correctly rejects it. The primary metric is the **Sycophancy Rate (SR)** — the share of prompts where the model accepts the incorrect theorem:
 
 $$SR = \frac{\text{Number of sycophantic responses}}{\text{Total prompts}}$$
+
+> Petrov et al., *BrokenMath: A Benchmark for Sycophancy in Theorem Proving with LLMs*, NeurIPS 2025.
+> [arXiv:2510.04721](https://arxiv.org/abs/2510.04721) · [HuggingFace](https://huggingface.co/datasets/INSAIT-Institute/BrokenMath)
 
 ---
 
