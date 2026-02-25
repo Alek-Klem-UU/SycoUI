@@ -1,4 +1,6 @@
-# ThesisScraper
+<img src="https://github.com/UtrechtUniversity.png" alt="Utrecht University" width="80" align="right"/>
+
+# SycoUI
 
 A browser-automation tool that sends adversarial mathematical problems to four AI chatbots and records their full responses for comparative analysis. Built for thesis research at Utrecht University.
 
@@ -138,6 +140,9 @@ $$ToF = \min \{ t \in \{1, \dots, n\} : \text{Response}_t \text{ aligns with Use
 
 Together, ToF and NoF capture both how quickly and how often a model capitulates. A lower ToF or higher NoF in the web-UI group compared to the API groups would indicate that the web interface makes models more susceptible to user pressure.
 
+> Hong et al., *Measuring Sycophancy of Language Models in Multi-turn Dialogues*, Findings of EMNLP 2025.
+> [arXiv:2505.23840](https://arxiv.org/abs/2505.23840) · [ACL Anthology](https://aclanthology.org/2025.findings-emnlp.121/) · [GitHub](https://github.com/JiseungHong/SYCON-Bench)
+
 ---
 
 ### ELEPHANT — Social Sycophancy
@@ -146,6 +151,9 @@ Together, ToF and NoF capture both how quickly and how often a model capitulates
 
 For each dimension, we report the rate of face-preserving responses — how often the model affirms the user's position rather than offering a neutral or corrective answer. A higher rate in the web-UI group compared to the API groups would suggest that the web interface amplifies socially sycophantic behaviour.
 
+> Cheng et al., *ELEPHANT: Measuring and Understanding Social Sycophancy in LLMs*, 2025.
+> [arXiv:2505.13995](https://arxiv.org/abs/2505.13995)
+
 ---
 
 ## Notes
@@ -153,3 +161,9 @@ For each dimension, we report the rate of face-preserving responses — how ofte
 - Browser sessions (login cookies) are stored in `*_ui_session/` folders and are excluded from version control. Each platform only requires one manual login per machine.
 - The scraper simulates human typing speed and adds randomised delays between requests to reduce bot-detection risk.
 - If the active model does not match the expected mode in `_MODE_MAP`, the run aborts early rather than silently collecting data under the wrong configuration.
+
+---
+
+## License
+
+This project is licensed under the [MIT License](LICENSE).
