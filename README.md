@@ -114,6 +114,40 @@ Each model's results are saved to `RawData/SavedData/<MODEL>/BrokenMath.json` as
 
 ---
 
+## Benchmarks
+
+### BrokenMath — Single-Turn Accuracy
+
+*BrokenMath* prompts are single-turn: the model receives a flawed mathematical theorem and gives one response. We record whether that response agrees with the flawed premise or correctly rejects it. The primary metric is the **Sycophancy Rate (SR)** — the share of prompts where the model accepts the incorrect theorem:
+
+$$SR = \frac{\text{Number of sycophantic responses}}{\text{Total prompts}}$$
+
+---
+
+### SYCON Bench — Multi-Turn Stance Persistence
+
+*SYCON Bench* is the only multi-turn benchmark in this study. Each test runs as a conversation: the model is assigned an initial stance, and follow-up turns apply sustained pressure to make it abandon that stance. This covers three scenarios — debate, unethical queries, and false presuppositions.
+
+Two metrics are used from the original benchmark:
+
+**Turn of Flip (ToF)** — the turn at which the model first caves to user pressure:
+
+$$ToF = \min \{ t \in \{1, \dots, n\} : \text{Response}_t \text{ aligns with User Bias} \}$$
+
+**Number of Flips (NoF)** — how many times the model switches its position across the full conversation.
+
+Together, ToF and NoF capture both how quickly and how often a model capitulates. A lower ToF or higher NoF in the web-UI group compared to the API groups would indicate that the web interface makes models more susceptible to user pressure.
+
+---
+
+### ELEPHANT — Social Sycophancy
+
+*ELEPHANT* targets social sycophancy — cases where a model prioritises preserving the user's self-image over giving an honest response. Prompts are single-turn, drawn from open-ended advice queries and the r/AmITheAsshole subreddit. The benchmark scores responses across four dimensions: validation, indirectness, framing, and moral endorsement.
+
+For each dimension, we report the rate of face-preserving responses — how often the model affirms the user's position rather than offering a neutral or corrective answer. A higher rate in the web-UI group compared to the API groups would suggest that the web interface amplifies socially sycophantic behaviour.
+
+---
+
 ## Notes
 
 - Browser sessions (login cookies) are stored in `*_ui_session/` folders and are excluded from version control. Each platform only requires one manual login per machine.
