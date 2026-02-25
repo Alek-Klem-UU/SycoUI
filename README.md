@@ -170,3 +170,9 @@ For each dimension, we report the rate of face-preserving responses — how ofte
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
+
+---
+
+## Acknowledgements
+
+The base code for this project was written by Alek Klem. [Claude Code](https://claude.ai/claude-code) was used to supplement the project — assisting with code cleanup, refactoring, and the creation of this README.
