@@ -32,15 +32,19 @@ class HumanTypist:
           3. Rhythm pauses    — spaces and punctuation marks get a short
              extra delay, mimicking the natural hesitation after word
              boundaries.
+
+        Uses press_sequentially() for character input so apostrophes, quotes,
+        and Unicode are typed correctly. Named keys (Backspace, Shift+Enter)
+        still use press().
         """
         for char in text:
 
             # --- 1. Typo simulation ---
             if char.lower() in HumanTypist.NEAR_KEYS and random.random() < typo_chance:
                 typo = random.choice(HumanTypist.NEAR_KEYS[char.lower()])
-                element.press(typo)
+                element.press_sequentially(typo)                  # press() breaks on non-ASCII
                 time.sleep(random.uniform(0.1, 0.25))  # reaction time to notice the mistake
-                element.press("Backspace")
+                element.press("Backspace")                        # named key — keep as press()
                 time.sleep(random.uniform(0.05, 0.15))
 
             # --- 2. Character execution ---
@@ -49,9 +53,9 @@ class HumanTypist:
                 time.sleep(random.uniform(0.05, 0.1))
 
             if char == '\n':
-                element.press('Shift+Enter')
+                element.press('Shift+Enter')                      # named key — keep as press()
             else:
-                element.press(char)
+                element.press_sequentially(char)                  # press() fails on "'", unicode, etc.
 
             # --- 3. Rhythm pauses ---
             # Only sleep when there is actually a pause to simulate; skipping
