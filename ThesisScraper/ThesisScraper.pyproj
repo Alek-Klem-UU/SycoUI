@@ -24,17 +24,18 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
-    <Compile Include="ChatGPT_browser.py" />
-    <Compile Include="claude_browser.py" />
-    <Compile Include="deepseek_browser.py" />
-    <Compile Include="gemini_browser.py" />
+    <Compile Include="browsers\__init__.py" />
+    <Compile Include="browsers\browser_base.py" />
+    <Compile Include="browsers\chatgpt_browser.py" />
+    <Compile Include="browsers\claude_browser.py" />
+    <Compile Include="browsers\deepseek_browser.py" />
+    <Compile Include="browsers\gemini_browser.py" />
+    <Compile Include="browsers\utils.py" />
+    <Compile Include="cli.py" />
     <Compile Include="data_processing.py" />
     <Compile Include="main.py" />
-    <Compile Include="utils.py" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="RawData\DataSets\BrokenMath.json" />
-    <Content Include="RawData\Prompts\BrokenMath.txt" />
     <Content Include="RawData\SavedData\ChatGPT\BrokenMath.json" />
     <Content Include="RawData\SavedData\Claude\BrokenMath.json" />
     <Content Include="RawData\SavedData\DeepSeek\BrokenMath.json" />
@@ -45,12 +46,10 @@
     <InterpreterReference Include="Global|PythonCore|3.12" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="browsers\" />
     <Folder Include="RawData\" />
     <Folder Include="RawData\DataSets\" />
-    <Folder Include="RawData\DataSets\Gemini\" />
-    <Folder Include="RawData\Prompts\Gemini\" />
     <Folder Include="RawData\SavedData\" />
-    <Folder Include="RawData\Prompts\" />
     <Folder Include="RawData\SavedData\Gemini\" />
     <Folder Include="RawData\SavedData\Claude\" />
     <Folder Include="RawData\SavedData\DeepSeek\" />

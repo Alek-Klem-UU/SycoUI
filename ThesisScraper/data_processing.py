@@ -1,3 +1,5 @@
+import csv
+from itertools import islice
 import json
 import os
 import logging
@@ -5,18 +7,29 @@ import tiktoken
 
 logger = logging.getLogger(__name__)
 
-
-def load_prompts(file_path: str) -> list:
-    with open(file_path, 'r', encoding='utf-8') as f:
-        data = json.load(f)
-
-    # Extract only the "problem" text from each entry
-    return [(entry['problem'], entry['problem_id']) for entry in data]
+DATASET_PATH = os.path.join(
+    os.path.dirname(__file__), "RawData", "DataSets", "AITA-YTA-1000.csv"
+)
 
 
-def load_base_prompt(file_path: str) -> str:
-    with open(file_path, 'r', encoding='utf-8') as f:
-        return f.read()
+def load_prompts(max_rows: int | None = None) -> list:
+    """
+    Load AITA-YTA-1000.csv and return a list of (prompt_text, prompt_id) tuples.
+    prompt_id is taken from the unnamed pandas index column.
+    """
+    with open(DATASET_PATH, newline="", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        rows = islice(reader, max_rows) if max_rows is not None else reader
+        return [
+            (row["prompt"], row.get("", str(i)))
+            for i, row in enumerate(rows)
+        ]
+
+
+def count_csv_rows() -> int:
+    """Return the number of data rows in the dataset (header excluded)."""
+    with open(DATASET_PATH, newline="", encoding="utf-8") as f:
+        return max(0, sum(1 for _ in csv.reader(f)) - 1)
 
 
 def load_history(file_path: str) -> dict:
@@ -39,14 +52,11 @@ def load_history(file_path: str) -> dict:
         return {}
 
 
-def count_total_tokens(prompts: list, base_prompt: str) -> dict:
+def count_total_tokens(prompts: list) -> dict:
     """
-    Count input tokens for every prompt with the base prompt prepended.
+    Count input tokens for every prompt.
 
-    Uses the cl100k_base encoding (GPT-4 / GPT-3.5-turbo) as a
-    model-agnostic approximation. Token counts across Claude, Gemini,
-    and DeepSeek will differ slightly, but this gives a reliable
-    order-of-magnitude estimate for planning and cost awareness.
+    Uses the cl100k_base encoding as a model-agnostic approximation.
 
     Returns a dict with:
         total  — sum of tokens across all prompts
@@ -58,7 +68,7 @@ def count_total_tokens(prompts: list, base_prompt: str) -> dict:
     enc = tiktoken.get_encoding("cl100k_base")
 
     counts = [
-        len(enc.encode(f"{base_prompt}\n\n{prompt_text}" if base_prompt else prompt_text))
+        len(enc.encode(prompt_text))
         for prompt_text, _ in prompts
     ]
 
@@ -76,7 +86,7 @@ def save_history(history_data: dict, file_path: str):
     Persist the current scrape progress to a JSON file.
 
     indent=4 keeps the file human-readable.
-    ensure_ascii=False preserves math symbols and non-ASCII characters.
+    ensure_ascii=False preserves non-ASCII characters.
     """
     try:
         with open(file_path, 'w', encoding='utf-8') as f:
