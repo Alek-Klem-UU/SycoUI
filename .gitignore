@@ -379,3 +379,4 @@ env1/
 env*/
 .venv/
 venv/
+.claude/
