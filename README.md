@@ -18,25 +18,22 @@ This tool operationalises that comparison. It automates the web interface condit
 
 ## What it does
 
-For each prompt in the dataset, the scraper:
+The tool runs in one of two **modes**:
 
-1. Opens a persistent browser session for the selected AI platform
-2. Waits for the user to log in manually (sessions are saved, so this is only needed once)
-3. Sends the prompt to the model
-4. Waits for the model to finish responding
-5. Scrapes the full conversation and saves it to JSON
+- **Browser** — opens a persistent Chromium session, waits for manual login, then sends each prompt through the commercial web UI and scrapes the rendered conversation.
+- **API** — calls the provider's official developer SDK directly with a key you supply at runtime.
 
-Results are saved incrementally, so the run can be interrupted and resumed at any time.
+In both modes, results are saved incrementally per prompt, so a run can be interrupted and resumed at any time. Browser and API outputs for the same model are written to separate folders so they never overwrite each other — the comparison between them *is* the experiment.
 
 ---
 
 ## Supported platforms
 
-| Key | Platform | Mode |
-|-----|----------|------|
-| `ChatGPT` | chatgpt.com | ChatGPT |
-| `Claude` | claude.ai | Sonnet 4.6 |
-| `Gemini` | gemini.google.com | Fast |
+| Key | Browser mode | Browser model | API mode | API model |
+|-----|--------------|---------------|----------|-----------|
+| `ChatGPT` | chatgpt.com | ChatGPT | OpenAI SDK | `gpt-4o` |
+| `Claude` | claude.ai | Sonnet 4.6 | Anthropic SDK | `claude-sonnet-4-6` |
+| `Gemini` | gemini.google.com | Fast | Google GenAI SDK | `gemini-2.5-flash` |
 
 ---
 
@@ -49,11 +46,16 @@ cd ThesisScraper
 pip install -r requirements.txt
 ```
 
-Install the Chromium browser used by Patchright:
+Install the Chromium browser used by Patchright (only needed for Browser mode):
 
 ```bash
 patchright install chromium
 ```
+
+For API mode, you need a key from each provider you intend to run. Keys can be supplied either way:
+
+- **Environment variable** (skips the prompt): `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`
+- **Interactive prompt** (input is hidden): the tool will ask at startup if no env var is set
 
 ---
 
@@ -64,9 +66,12 @@ cd ThesisScraper
 python main.py
 ```
 
-An interactive menu will prompt you to select a model and subset size. The browser window will then open and pause for login. Once you are logged in and the chat interface is ready, press **Enter** in the terminal. The scraper will run through the dataset automatically.
+An interactive menu will prompt you to select a **mode** (Browser or API), a **model**, and a **subset size**.
 
-Progress is saved after every prompt. To resume an interrupted run, just run `main.py` again with the same model — already-completed entries are skipped.
+- In **Browser mode**, a Chromium window opens and pauses for login. Once you are logged in and the chat interface is ready, press **Enter** in the terminal and the scraper will run through the dataset automatically.
+- In **API mode**, you'll be prompted for the API key (unless the relevant environment variable is set), and the run starts immediately — no browser is launched.
+
+Progress is saved after every prompt. To resume an interrupted run, just run `main.py` again with the same mode and model — already-completed entries are skipped.
 
 ---
 
@@ -75,7 +80,7 @@ Progress is saved after every prompt. To resume an interrupted run, just run `ma
 ```
 ThesisScraper/
 ├── main.py                  # Entry point — orchestration, CLI, run loop
-├── cli.py                   # Terminal UI — menus, styled output
+├── cli.py                   # Terminal UI — menus, styled output, API-key prompt
 ├── data_processing.py       # Load prompts, save/load results, token counting
 ├── browsers/
 │   ├── browser_base.py      # Shared retry logic, selector resolution, error types
@@ -83,21 +88,24 @@ ThesisScraper/
 │   ├── chatgpt_browser.py   # Automation for chatgpt.com
 │   ├── gemini_browser.py    # Automation for gemini.google.com
 │   └── utils.py             # HumanTypist — realistic keystroke simulation
+├── apis/
+│   ├── api_base.py          # Shared retry logic + browser-compatible interface
+│   ├── claude_api.py        # Anthropic SDK client
+│   ├── chatgpt_api.py       # OpenAI SDK client
+│   └── gemini_api.py        # Google GenAI SDK client
 ├── requirements.txt
 └── RawData/
     ├── DataSets/
     │   └── AITA-YTA-1000.csv  # Input: 1,000 sampled AITA-YTA prompts
     └── SavedData/
-        ├── ChatGPT/
-        ├── Claude/
-        └── Gemini/            # Output: one JSON file per model
+        └── <Model>/<Mode>/<dataset>.json   # e.g. Claude/Browser/, Claude/API/
 ```
 
 ---
 
 ## Output format
 
-Each model's results are saved to `RawData/SavedData/<MODEL>/AITA-YTA-1000.json`, keyed by prompt ID:
+Each run's results are saved to `RawData/SavedData/<MODEL>/<MODE>/AITA-YTA-1000.json`, keyed by prompt ID:
 
 ```json
 {
@@ -143,7 +151,10 @@ A higher face-preserving rate in the web interface condition relative to the API
 - Browser sessions (login cookies) are stored in `*_ui_session/` folders and are excluded from version control. Each platform only requires one manual login per machine.
 - The scraper simulates human typing speed and adds randomised delays between requests to reduce bot-detection risk.
 - If the active model does not match the expected mode, the run aborts early rather than silently collecting data under the wrong configuration.
-- Token counts are logged at startup using `tiktoken` (cl100k_base) as an order-of-magnitude cost estimate.
+- Progress is persisted atomically (tmp-file + rename), so a crash or power loss during a long run cannot leave a half-written JSON file.
+- Token counts are logged at startup using `tiktoken` (`cl100k_base`) as an order-of-magnitude cost estimate — real per-provider tokenisation differs, especially for Gemini.
+- API keys are never persisted or logged: they are read from the relevant environment variable if set, or collected at the start of an API-mode run via a hidden (`getpass`) prompt, and then held only on the client instance until the process exits.
+- Transient API failures (rate limits, server errors, connection drops) are retried up to 3× with exponential backoff; non-transient errors (e.g. authentication) surface immediately instead of being retried.
 
 ---
 
@@ -155,4 +166,4 @@ This project is licensed under the [MIT License](LICENSE).
 
 ## Acknowledgements
 
-The base code for this project was written by Alek Klem. [Claude Code](https://claude.ai/claude-code) was used to supplement the project — assisting with code cleanup, refactoring, and the creation of this README.
+The base code for this project was written by Alek Klem. [Claude Code](https://claude.ai/claude-code) was used to supplement the project — assisting with code cleanup, refactoring, the API-mode integration, and the creation of this README.

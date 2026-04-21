@@ -237,10 +237,13 @@ class BaseBrowser(ABC):
                 self._recover_page()
                 self.page.goto(self._HOME_URL)
             elif "interrupted by another navigation" in str(exc):
-                # Gemini (and other SPAs) trigger a client-side redirect during
-                # load, which Playwright sees as a second navigation interrupting
-                # the first. The page does end up at the right URL.
-                # The wait_for_selector below is the real readiness gate.
+                # Observed on Gemini (gemini.google.com/app), which performs a
+                # client-side redirect during load that Playwright reports as
+                # a second navigation interrupting the first. The page still
+                # ends up at the right URL. The wait_for_selector below is the
+                # real readiness gate, so it's safe to swallow this here.
+                # If a future platform exhibits the same symptom, add it to
+                # this comment rather than broadening the catch.
                 logger.debug("Navigation interrupted by SPA redirect — proceeding.")
             else:
                 raise
@@ -311,6 +314,16 @@ class BaseBrowser(ABC):
 
         responses = self.page.locator(self._selector("response_node")).all()
         queries = self.page.locator(self._selector("user_query")).all()
+
+        if len(responses) != len(queries):
+            # Index-based pairing assumes one user query per response. If the
+            # platform ever renders an unpaired node (e.g. a system notice or
+            # a streaming partial), every subsequent turn is mis-aligned.
+            logger.warning(
+                "Turn-pairing mismatch: %d response nodes vs %d user queries. "
+                "Output may be misaligned.",
+                len(responses), len(queries),
+            )
 
         history = []
         for i, resp in enumerate(responses):

@@ -1,2 +1,5 @@
-pip==23.2.1
+patchright
 tiktoken
+anthropic
+openai
+google-genai

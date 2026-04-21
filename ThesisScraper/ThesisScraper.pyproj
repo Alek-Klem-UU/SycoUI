@@ -24,11 +24,15 @@
     <EnableUnmanagedDebugging>false</EnableUnmanagedDebugging>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="apis\__init__.py" />
+    <Compile Include="apis\api_base.py" />
+    <Compile Include="apis\chatgpt_api.py" />
+    <Compile Include="apis\claude_api.py" />
+    <Compile Include="apis\gemini_api.py" />
     <Compile Include="browsers\__init__.py" />
     <Compile Include="browsers\browser_base.py" />
     <Compile Include="browsers\chatgpt_browser.py" />
     <Compile Include="browsers\claude_browser.py" />
-    <Compile Include="browsers\deepseek_browser.py" />
     <Compile Include="browsers\gemini_browser.py" />
     <Compile Include="browsers\utils.py" />
     <Compile Include="cli.py" />
@@ -36,24 +40,17 @@
     <Compile Include="main.py" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="RawData\SavedData\ChatGPT\BrokenMath.json" />
-    <Content Include="RawData\SavedData\Claude\BrokenMath.json" />
-    <Content Include="RawData\SavedData\DeepSeek\BrokenMath.json" />
-    <Content Include="RawData\SavedData\Gemini\BrokenMath.json" />
     <Content Include="requirements.txt" />
   </ItemGroup>
   <ItemGroup>
     <InterpreterReference Include="Global|PythonCore|3.12" />
   </ItemGroup>
   <ItemGroup>
+    <Folder Include="apis\" />
     <Folder Include="browsers\" />
     <Folder Include="RawData\" />
     <Folder Include="RawData\DataSets\" />
     <Folder Include="RawData\SavedData\" />
-    <Folder Include="RawData\SavedData\Gemini\" />
-    <Folder Include="RawData\SavedData\Claude\" />
-    <Folder Include="RawData\SavedData\DeepSeek\" />
-    <Folder Include="RawData\SavedData\ChatGPT\" />
   </ItemGroup>
   <Import Project="$(MSBuildExtensionsPath32)\Microsoft\VisualStudio\v$(VisualStudioVersion)\Python Tools\Microsoft.PythonTools.targets" />
   <!-- Uncomment the CoreCompile target to enable the Build command in
