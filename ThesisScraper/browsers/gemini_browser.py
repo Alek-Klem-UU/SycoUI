@@ -20,10 +20,6 @@ _SELECTORS = {
         "button[aria-label*='Stop']",
         "button[data-test-id='stop-button']",
     ],
-    "mic_button": [
-        "button[name='Use microphone']",
-        "button[aria-label*='microphone']",
-    ],
     "model_pill": [
         "[data-test-id='logo-pill-label-container']",
         "[data-test-id='model-selector']",
@@ -53,9 +49,17 @@ class GeminiBrowser(BaseBrowser):
     _PLATFORM_NAME = "Gemini"
 
     _AUTH_URL_MARKERS      = ("signin", "accounts.google")
-    _RESPONSE_FALLBACK_KEY = "mic_button"
+    _RESPONSE_FALLBACK_KEY = "send_button"
 
     SELECTOR_CANDIDATES = _SELECTORS
+
+    def get_history(self):
+        history = super().get_history()
+        for turn in history:
+            turn["user"]         = turn["user"].removeprefix("You said\n\n")
+            turn["model_output"] = turn["model_output"].removeprefix("Gemini said\n\n") \
+                                                       .removeprefix("Gemini said ")
+        return history
 
     def get_active_model(self) -> str:
         try:

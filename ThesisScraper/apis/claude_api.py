@@ -12,13 +12,18 @@ class ClaudeAPI(BaseAPI):
         # Lazy import so users running browser-only mode don't need the SDK.
         from anthropic import Anthropic, APIStatusError, APIConnectionError, RateLimitError
         self._RETRY_EXCEPTIONS = (APIStatusError, APIConnectionError, RateLimitError)
-        return Anthropic(api_key=self._api_key)
+        return Anthropic(api_key=self._api_key, max_retries=0)
 
     def _send(self, text: str) -> str:
+        kwargs = {}
+        if self._temperature is not None:
+            kwargs["temperature"] = self._temperature
+
         msg = self._client.messages.create(
             model=self._MODEL_ID,
             max_tokens=self._MAX_TOKENS,
             messages=[{"role": "user", "content": text}],
+            **kwargs,
         )
         # content is a list of blocks; concatenate every text block so we
         # don't silently drop content if the SDK ever returns multiple.

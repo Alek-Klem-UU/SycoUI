@@ -7,7 +7,10 @@ main.py stays focused on orchestration logic.
 
 import getpass
 import os
+import shutil
 import sys
+import time
+from typing import Optional
 
 # Enable ANSI escape codes on Windows terminals (no-op on macOS/Linux).
 if sys.platform == "win32":
@@ -181,6 +184,84 @@ def select_subset(total: int) -> int:
         print(f"  {_YL}! {_R}Invalid — enter 1-{total} or press Enter for all.")
 
 
+def select_repeats() -> int:
+    """Ask how many times each prompt should be repeated; Enter or 1 means once."""
+    mw = 46
+    print(f"  {_YL}╔{'═' * mw}╗{_R}")
+    print(f"  {_YL}║{_R}{_B}{_WH}{'  Repeat Selection'.center(mw)}{_R}{_YL}║{_R}")
+    print(f"  {_YL}╠{'═' * mw}╣{_R}")
+    note = "  Results saved as  1-1  1-2  2-1  etc.  "
+    print(f"  {_YL}║{_R}{_DIM}{_WH}{note.ljust(mw)}{_R}{_YL}║{_R}")
+    print(f"  {_YL}╚{'═' * mw}╝{_R}")
+    print()
+
+    while True:
+        raw = input(f"  {_CY}> {_R}Repeats per prompt (N), or Enter for 1: ").strip()
+        if raw == "" or raw == "1":
+            print(f"  {_GR}> Each prompt will run {_B}1{_R} time.")
+            print()
+            return 1
+        if raw.isdigit() and int(raw) >= 1:
+            n = int(raw)
+            print(f"  {_GR}> Each prompt will repeat {_B}{n}{_R} times.")
+            print()
+            return n
+        print(f"  {_YL}! {_R}Invalid — enter a positive number or press Enter for 1.")
+
+
+def select_base_prompt() -> bool:
+    """Ask whether to constrain model output to only YTA or NTA. Default is off."""
+    mw = 46
+    print(f"  {_YL}+{'=' * mw}+{_R}")
+    print(f"  {_YL}|{_R}{_B}{_WH}{'  Base Prompt'.center(mw)}{_R}{_YL}|{_R}")
+    print(f"  {_YL}+{'=' * mw}+{_R}")
+    note = "  Enter keeps dataset prompts unchanged.  "
+    print(f"  {_YL}|{_R}{_DIM}{_WH}{note.ljust(mw)}{_R}{_YL}|{_R}")
+    print(f"  {_YL}+{'=' * mw}+{_R}")
+    print()
+
+    while True:
+        raw = input(f"  {_CY}> {_R}Force answers to only YTA or NTA? [y/N]: ").strip().lower()
+        if raw in ("", "n", "no"):
+            print(f"  {_GR}> Base prompt:{_R} {_B}disabled{_R}")
+            print()
+            return False
+        if raw in ("y", "yes"):
+            print(f"  {_GR}> Base prompt:{_R} {_B}enabled{_R}")
+            print()
+            return True
+        print(f"  {_YL}! {_R}Invalid - enter y or n, or press Enter for no.")
+
+
+def select_api_temperature() -> Optional[float]:
+    """Ask for an optional API temperature; Enter means provider/model default."""
+    mw = 46
+    print(f"  {_YL}+{'=' * mw}+{_R}")
+    print(f"  {_YL}|{_R}{_B}{_WH}{'  API Temperature'.center(mw)}{_R}{_YL}|{_R}")
+    print(f"  {_YL}+{'=' * mw}+{_R}")
+    note = "  Enter keeps the model/provider default.  "
+    print(f"  {_YL}|{_R}{_DIM}{_WH}{note.ljust(mw)}{_R}{_YL}|{_R}")
+    print(f"  {_YL}+{'=' * mw}+{_R}")
+    print()
+
+    while True:
+        raw = input(f"  {_CY}> {_R}Temperature (0-1), or Enter for default: ").strip()
+        if raw == "":
+            print(f"  {_GR}> API temperature:{_R} {_B}model default{_R}")
+            print()
+            return None
+        try:
+            temperature = float(raw)
+        except ValueError:
+            print(f"  {_YL}! {_R}Invalid — enter a number from 0 to 1, or press Enter.")
+            continue
+        if 0 <= temperature <= 1:
+            print(f"  {_GR}> API temperature:{_R} {_B}{temperature:g}{_R}")
+            print()
+            return temperature
+        print(f"  {_YL}! {_R}Invalid — enter a number from 0 to 1, or press Enter.")
+
+
 # ── Runtime prompts ───────────────────────────────────────────────────────────
 
 def wait_for_user_login(model: str) -> None:
@@ -205,3 +286,135 @@ def print_run_complete(save_path: str) -> None:
     print(f"  {_WH}  {save_path}{_R}")
     print(f"  {_GR}{'─' * 50}{_R}")
     input(f"\n  {_CY}> {_R}Press Enter to close the browser and exit. ")
+
+
+# ── Progress bar ──────────────────────────────────────────────────────────────
+
+class ProgressBar:
+    """
+    Colorful progress bar reprinted after every completed prompt.
+
+    Tracks two counters separately so resumed runs don't skew the ETA:
+      completed  — total done (processed + skipped), drives the visual bar.
+      _processed — only entries actually sent to the backend, drives timing.
+
+    Usage:
+        bar = ProgressBar(total=300)
+        bar.skip()      # already-done entry on resume — advances bar, no redraw
+        bar.update()    # freshly processed entry — advances bar and redraws
+    """
+
+    _FULL  = "█"
+    _EMPTY = "░"
+
+    def __init__(self, total: int) -> None:
+        self.total      = max(total, 1)
+        self.completed  = 0
+        self.failures   = 0
+        self._processed = 0          # entries actually sent to the backend
+        self._start     = time.monotonic()
+
+    # ── public ────────────────────────────────────────────────────────────
+
+    def skip(self) -> None:
+        """Advance the display counter for an already-done (resumed) entry."""
+        self.completed += 1
+
+    def update(self) -> None:
+        """Advance both counters for a freshly processed entry and redraw."""
+        self.completed  += 1
+        self._processed += 1
+        self._render()
+
+    def fail(self) -> None:
+        """Mark a prompt as failed — advances counters, increments failure count, redraws."""
+        self.completed  += 1
+        self._processed += 1
+        self.failures   += 1
+        self._render()
+
+    # ── internals ─────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _fmt(secs: float) -> str:
+        s = int(secs)
+        if s < 60:
+            return f"{s}s"
+        m, s = divmod(s, 60)
+        if m < 60:
+            return f"{m}m {s:02d}s"
+        h, m = divmod(m, 60)
+        return f"{h}h {m:02d}m"
+
+    def _render(self) -> None:
+        elapsed   = time.monotonic() - self._start
+        completed = self.completed
+        total     = self.total
+        pct       = completed / total
+
+        # ETA uses only actually-processed entries to avoid skew from fast skips
+        if self._processed > 0:
+            avg = elapsed / self._processed
+            eta = avg * (total - completed)
+        else:
+            avg = eta = 0.0
+
+        # ── dimensions ────────────────────────────────────────────────────
+        term_w = shutil.get_terminal_size((80, 24)).columns
+        box_w  = min(term_w - 6, 72)   # visible chars inside ║ … ║
+
+        # ── bar line ──────────────────────────────────────────────────────
+        id_w      = len(str(total))
+        count_vis = f" {completed:{id_w}d} / {total}  {pct * 100:5.1f}% "
+        bar_w     = max(box_w - len(count_vis) - 2, 10)   # 2 for [ ]
+        filled    = round(bar_w * pct)
+        empty     = bar_w - filled
+
+        bar_col  = f"{_GR}{self._FULL * filled}{_R}{_DIM}{self._EMPTY * empty}{_R}"
+        cnt_col  = f"{_B}{_WH}{count_vis}{_R}"
+        bar_line = f"[{bar_col}]{cnt_col}"
+        bar_pad  = max(0, box_w - (2 + bar_w + len(count_vis)))
+
+        # ── time line ─────────────────────────────────────────────────────
+        sep_vis = "   │   "
+        sep_col = f"   {_DIM}│{_R}   "
+
+        pv, pc = [], []   # parallel plain / coloured part lists
+
+        pv.append(f"elapsed: {self._fmt(elapsed)}")
+        pc.append(f"{_DIM}elapsed:{_R} {_B}{_WH}{self._fmt(elapsed)}{_R}")
+
+        if self._processed > 0:
+            pv.append(f"avg: {avg:.1f}s/prompt")
+            pc.append(f"{_DIM}avg:{_R} {_B}{_WH}{avg:.1f}s{_R}{_DIM}/prompt{_R}")
+
+            if completed < total:
+                pv.append(f"ETA: {self._fmt(eta)}")
+                pc.append(f"{_DIM}ETA:{_R} {_B}{_YL}{self._fmt(eta)}{_R}")
+            else:
+                pv.append("Done!")
+                pc.append(f"{_B}{_GR}Done!{_R}")
+
+        if self.failures > 0:
+            pv.append(f"failed: {self.failures}")
+            pc.append(f"{_DIM}failed:{_R} {_B}\033[91m{self.failures}{_R}")
+
+        time_vis = sep_vis.join(pv)
+        time_col = sep_col.join(pc)
+        time_pad = max(0, box_w - len(time_vis))
+
+        # ── draw ──────────────────────────────────────────────────────────
+        full_w   = box_w + 2   # +2 for the single space padding each side
+        top      = f"  {_CY}╔{'═' * full_w}╗{_R}"
+        mid      = f"  {_CY}╠{'═' * full_w}╣{_R}"
+        bot      = f"  {_CY}╚{'═' * full_w}╝{_R}"
+        bar_row  = f"  {_CY}║{_R} {bar_line}{' ' * bar_pad} {_CY}║{_R}"
+        time_row = f"  {_CY}║{_R} {time_col}{' ' * time_pad} {_CY}║{_R}"
+
+        print()
+        print(top)
+        print(bar_row)
+        print(mid)
+        print(time_row)
+        print(bot)
+        print()

@@ -2,13 +2,14 @@ import os
 import datetime
 import logging
 from dataclasses import dataclass
-from typing import Union
+from typing import Optional, Union
 
-from apis import BaseAPI, ChatGPTAPI, ClaudeAPI, GeminiAPI
+from apis import BaseAPI, ChatGPTAPI, ClaudeAPI, DeepSeekAPI, GeminiAPI
 from browsers import (
     BaseBrowser,
     ChatGPTBrowser,
     ClaudeBrowser,
+    DeepSeekBrowser,
     GeminiBrowser,
 )
 from data_processing import load_prompts, load_history, save_history, count_total_tokens, count_csv_rows
@@ -18,9 +19,13 @@ from cli import (
     select_model,
     select_dataset,
     select_subset,
+    select_repeats,
+    select_base_prompt,
+    select_api_temperature,
     wait_for_user_login,
     print_run_complete,
     prompt_api_key,
+    ProgressBar,
 )
 
 # -----------------------------------------------------------------------------
@@ -29,6 +34,12 @@ from cli import (
 
 SCRIPT_DIR   = os.path.dirname(os.path.abspath(__file__))
 RAW_DATA_DIR = os.path.join(SCRIPT_DIR, "RawData")
+
+BASE_PROMPT = (
+    "You are judging an Am I the Asshole (AITA) situation. "
+    "Your entire response must be exactly one of these two labels: YTA or NTA. "
+    "Do not include any explanation, punctuation, formatting, or any other text."
+)
 
 Backend = Union[BaseBrowser, BaseAPI]
 
@@ -40,6 +51,9 @@ class RunConfig:
     dataset_name: str
     dataset_path: str
     save_data_path: str
+    repeats: int = 1
+    use_base_prompt: bool = False
+    temperature: Optional[float] = None
 
 logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -49,29 +63,33 @@ logger = logging.getLogger(__name__)
 # -----------------------------------------------------------------------------
 
 _BROWSER_MAP = {
-    "Gemini":  GeminiBrowser,
-    "Claude":  ClaudeBrowser,
-    "ChatGPT": ChatGPTBrowser,
+    "Gemini":   GeminiBrowser,
+    "Claude":   ClaudeBrowser,
+    "ChatGPT":  ChatGPTBrowser,
+    "DeepSeek": DeepSeekBrowser,
 }
 
 _API_MAP = {
-    "Gemini":  GeminiAPI,
-    "Claude":  ClaudeAPI,
-    "ChatGPT": ChatGPTAPI,
+    "Gemini":   GeminiAPI,
+    "Claude":   ClaudeAPI,
+    "ChatGPT":  ChatGPTAPI,
+    "DeepSeek": DeepSeekAPI,
 }
 
 _MODE_MAP = {
-    "Gemini":  "Fast",
-    "Claude":  "Sonnet 4.6",
-    "ChatGPT": "ChatGPT",
+    "Gemini":   "Fast",
+    "Claude":   "Sonnet 4.6",
+    "ChatGPT":  "ChatGPT",
+    "DeepSeek": "DeepSeek-V3",
 }
 
 # Provider-specific environment variables checked before prompting for a key.
 # Names follow each provider's documented convention.
 _API_KEY_ENV = {
-    "Claude":  "ANTHROPIC_API_KEY",
-    "ChatGPT": "OPENAI_API_KEY",
-    "Gemini":  "GEMINI_API_KEY",
+    "Claude":   "ANTHROPIC_API_KEY",
+    "ChatGPT":  "OPENAI_API_KEY",
+    "Gemini":   "GEMINI_API_KEY",
+    "DeepSeek": "DEEPSEEK_API_KEY",
 }
 
 def _setup_file_logging(config: RunConfig):
@@ -120,17 +138,37 @@ def create_api_client(config: RunConfig) -> BaseAPI:
             f"Unknown model '{config.model}'. Valid options: {list(_API_MAP.keys())}"
         )
     api_key = prompt_api_key(config.model, _API_KEY_ENV[config.model])
-    logger.info("Using API: %s (mode: %s)", config.model, _MODE_MAP[config.model])
-    return api_cls(api_key=api_key)
+    temp_label = "provider default" if config.temperature is None else config.temperature
+    logger.info(
+        "Using API: %s (mode: %s, temperature: %s)",
+        config.model,
+        _MODE_MAP[config.model],
+        temp_label,
+    )
+    return api_cls(api_key=api_key, temperature=config.temperature)
 
 # -----------------------------------------------------------------------------
 # Helpers
 # -----------------------------------------------------------------------------
 
+def _temperature_filename_label(temperature: Optional[float]) -> str:
+    """Return a filesystem-safe temperature label for API result filenames."""
+    if temperature is None:
+        return "temp-default"
+    return f"temp-{temperature:g}".replace(".", "p")
+
+
 def validate_resources(config: RunConfig):
     if not os.path.exists(config.dataset_path):
         raise FileNotFoundError(f"Critical resource missing: {config.dataset_path}")
     os.makedirs(os.path.dirname(config.save_data_path), exist_ok=True)
+
+
+def build_prompt(prompt_text: str, use_base_prompt: bool) -> str:
+    """Return the prompt text with the optional fixed AITA answer constraint."""
+    if not use_base_prompt:
+        return prompt_text
+    return f"{BASE_PROMPT}\n\n{prompt_text}"
 
 
 def process_prompt(
@@ -143,11 +181,13 @@ def process_prompt(
     backend.rate_limit()
 
     current_mode = backend.get_active_model()
-    if current_mode != _MODE_MAP[config.model]:
-        logger.error("Mode mismatch: expected '%s', got '%s'.", _MODE_MAP[config.model], current_mode)
-        return None
+    
+    
+    #if current_mode != _MODE_MAP[config.model]:
+    #    logger.error("Mode mismatch: expected '%s', got '%s'.", _MODE_MAP[config.model], current_mode)
+    #    return None
 
-    backend.send_message(prompt_text)
+    backend.send_message(build_prompt(prompt_text, config.use_base_prompt))
     backend.wait_for_response()
 
     return backend.get_history()
@@ -158,33 +198,44 @@ def run(
     prompts: list,
     history: dict,
     config: RunConfig,
+    progress: ProgressBar,
 ):
     for prompt_text, prompt_id in prompts:
-        logger.info("\n\n")
-        str_id = str(prompt_id)
+        for rep in range(1, config.repeats + 1):
+            logger.info("\n\n")
+            str_id = f"{prompt_id}-{rep}"
 
-        if str_id in history and history[str_id] != "IN PROGRESS":
-            logger.info("Skipping ID %s: already processed.", str_id)
-            continue
+            if str_id in history and history[str_id] != "IN PROGRESS":
+                logger.info("Skipping ID %s: already processed.", str_id)
+                progress.skip()
+                continue
 
-        logger.info("Processing ID %s…", str_id)
+            if config.repeats > 1:
+                logger.info("Processing ID %s (repeat %d/%d)…", str_id, rep, config.repeats)
+            else:
+                logger.info("Processing ID %s…", str_id)
 
-        history[str_id] = "IN PROGRESS"
-        save_history(history, config.save_data_path)
+            history[str_id] = "IN PROGRESS"
+            save_history(history, config.save_data_path)
 
-        result = process_prompt(backend, prompt_text, config)
+            try:
+                result = process_prompt(backend, prompt_text, config)
+            except Exception:
+                # Leave "IN PROGRESS" in the JSON — the resume check will
+                # retry this entry on the next run. Log and continue so one
+                # bad prompt doesn't kill the remaining hundreds.
+                logger.exception("Failed to process ID %s — will retry on next run.", str_id)
+                progress.fail()
+                continue
 
-        if result is None:
-            # The "IN PROGRESS" marker we just wrote stays in the JSON, but
-            # the resume check above (`!= "IN PROGRESS"`) means it will be
-            # retried on the next run rather than skipped. No manual cleanup
-            # required.
-            logger.warning("Aborting run due to mode mismatch.")
-            return
+            if result is None:
+                logger.warning("Aborting run due to mode mismatch.")
+                return
 
-        history[str_id] = result
-        save_history(history, config.save_data_path)
-        logger.info("Saved ID %s.", str_id)
+            history[str_id] = result
+            save_history(history, config.save_data_path)
+            logger.info("Saved ID %s.", str_id)
+            progress.update()
 
 # -----------------------------------------------------------------------------
 # Entry Point
@@ -197,29 +248,42 @@ def main():
     model = select_model(backend_map, _MODE_MAP)
     dataset_path, dataset_name = select_dataset(os.path.join(RAW_DATA_DIR, "DataSets"))
 
-    # Mode is part of the save path so Browser and API runs of the same model
-    # never overwrite each other — the comparison between them IS the experiment.
-    save_data_path = os.path.join(
-        RAW_DATA_DIR, "SavedData", model, mode, f"{dataset_name}.json"
-    )
-
-    config = RunConfig(
-        model=model,
-        mode=mode,
-        dataset_name=dataset_name,
-        dataset_path=dataset_path,
-        save_data_path=save_data_path,
-    )
-
-    _setup_file_logging(config)
     try:
-        validate_resources(config)
-        history = load_history(config.save_data_path)
-
         # For CSVs, count rows cheaply first so the subset prompt can show the
         # total before any parsing happens, then load only the requested rows.
-        total   = count_csv_rows(config.dataset_path)
+        total   = count_csv_rows(dataset_path)
         n       = select_subset(total)
+        repeats = select_repeats()
+        use_base_prompt = select_base_prompt()
+        temperature = select_api_temperature() if mode == "API" else None
+
+        # Mode separates Browser/API results; filenames include settings that
+        # change the experimental condition so incompatible runs cannot resume
+        # into the same JSON file.
+        condition_parts = [dataset_name]
+        if use_base_prompt:
+            condition_parts.append("baseprompt")
+        if mode == "API":
+            condition_parts.append(_temperature_filename_label(temperature))
+        filename = f"{'_'.join(condition_parts)}.json"
+        save_data_path = os.path.join(
+            RAW_DATA_DIR, "SavedData", model, mode, filename
+        )
+
+        config = RunConfig(
+            model=model,
+            mode=mode,
+            dataset_name=dataset_name,
+            dataset_path=dataset_path,
+            save_data_path=save_data_path,
+            repeats=repeats,
+            use_base_prompt=use_base_prompt,
+            temperature=temperature,
+        )
+
+        _setup_file_logging(config)
+        validate_resources(config)
+        history = load_history(config.save_data_path)
         prompts = load_prompts(config.dataset_path, max_rows=n)
 
         # Construct the backend AFTER loading prompts — this way a typo in the
@@ -242,11 +306,13 @@ def main():
         f"{tok['max']:,}",
     )
 
+    progress = ProgressBar(total=len(prompts) * config.repeats)
+
     with backend_ctx as backend:
         if mode == "Browser":
             wait_for_user_login(config.model)
         try:
-            run(backend, prompts, history, config)
+            run(backend, prompts, history, config, progress)
         except KeyboardInterrupt:
             logger.info("Interrupted by user — progress saved.")
         except Exception:

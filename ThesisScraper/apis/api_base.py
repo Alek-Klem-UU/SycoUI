@@ -46,16 +46,23 @@ class BaseAPI(ABC):
     # Exception types this provider raises that should trigger a retry.
     # Subclasses override with provider-specific transient errors.
     _RETRY_EXCEPTIONS: tuple = (Exception,)
+    _RETRY_STATUS_CODES = {408, 409, 429, 500, 502, 503, 504, 529}
 
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, temperature: Optional[float] = None):
         if not api_key:
             raise ValueError(f"{self._PLATFORM_NAME}: api_key is required.")
         self._api_key = api_key
+        self._temperature = temperature
         self._client = self._make_client()
         self._last_prompt: Optional[str] = None
         self._last_response: Optional[str] = None
-        logger.info("Initialised %s API client (model: %s)",
-                    self._PLATFORM_NAME, self._MODEL_ID)
+        temp_label = "provider default" if temperature is None else temperature
+        logger.info(
+            "Initialised %s API client (model: %s, temperature: %s)",
+            self._PLATFORM_NAME,
+            self._MODEL_ID,
+            temp_label,
+        )
 
     # -- Context manager (browser parity) --------------------------------------
 
@@ -105,7 +112,7 @@ class BaseAPI(ABC):
         self,
         text: str,
         attempts: int = 3,
-        delay: float = 2.0,
+        delay: float = 10.0,
         backoff: float = 2.0,
     ) -> str:
         """
@@ -121,6 +128,12 @@ class BaseAPI(ABC):
             try:
                 return self._send(text)
             except self._RETRY_EXCEPTIONS as exc:
+                status_code = getattr(exc, "status_code", None)
+                if status_code is not None and status_code not in self._RETRY_STATUS_CODES:
+                    raise APIError(
+                        f"{self._PLATFORM_NAME} API call failed: {exc}"
+                    ) from exc
+
                 if attempt == attempts:
                     logger.error(
                         "%s API call failed after %d attempts: %s",
@@ -130,11 +143,12 @@ class BaseAPI(ABC):
                         f"{self._PLATFORM_NAME} API call failed after "
                         f"{attempts} attempts: {exc}"
                     ) from exc
+                jittered_wait = wait * random.uniform(0.8, 1.2)
                 logger.warning(
                     "%s API call attempt %d/%d failed (%s). Retrying in %.1fs…",
-                    self._PLATFORM_NAME, attempt, attempts, exc, wait,
+                    self._PLATFORM_NAME, attempt, attempts, exc, jittered_wait,
                 )
-                time.sleep(wait)
+                time.sleep(jittered_wait)
                 wait *= backoff
             except Exception as exc:
                 # Non-retriable provider error — surface immediately, no retry.

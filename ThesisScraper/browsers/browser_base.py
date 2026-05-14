@@ -98,10 +98,11 @@ class BaseBrowser(ABC):
     _AUTH_URL_MARKERS: tuple = ("login", "signin", "auth")
     _STRIP_SELECTORS: str = "button, [role='button'], [aria-hidden='true']"
     _RESPONSE_FALLBACK_KEY: str = "send_button"
+    _POST_RESPONSE_WAIT:    float = 10.0  # extra sleep after content check
 
     DEFAULT_TIMEOUTS: Dict[str, int] = {
-        "page_load":          30_000,
-        "response_start":      5_000,
+        "page_load":          300_000,
+        "response_start":      15_000,
         "response_complete":  180_000,
         "response_fallback":   15_000,
         "selector_probe":      2_000,
@@ -278,24 +279,92 @@ class BaseBrowser(ABC):
     def wait_for_response(self):
         """Block until the model finishes generating its response."""
         try:
+            # Phase 1: wait for the stop button to appear, then disappear.
             self.page.wait_for_selector(
                 self._selector("stop_button"),
                 timeout=self.timeouts["response_start"],
             )
             self.page.locator(self._selector("stop_button")).wait_for(
-                state="detached", timeout=self.timeouts["response_complete"]
+                state="hidden", timeout=self.timeouts["response_complete"]
             )
-            logger.info("Response received.")
         except Exception:
+            # Phase 1 failed — either the stop button never appeared (fast
+            # response, selector stale) or it never disappeared (timeout).
+            # Fall back to a platform-specific "done" signal.
             logger.info(
                 "Stop-button strategy failed — falling back to '%s'.",
                 self._RESPONSE_FALLBACK_KEY,
             )
-            self.page.wait_for_selector(
-                self._selector(self._RESPONSE_FALLBACK_KEY),
-                state="visible",
-                timeout=self.timeouts["response_fallback"],
-            )
+            try:
+                self.page.wait_for_selector(
+                    self._selector(self._RESPONSE_FALLBACK_KEY),
+                    state="visible",
+                    timeout=self.timeouts["response_fallback"],
+                )
+            except Exception:
+                # Fallback signal also not found — content check is our last line.
+                logger.warning(
+                    "Fallback signal '%s' not found — relying solely on content check.",
+                    self._RESPONSE_FALLBACK_KEY,
+                )
+
+        # Phase 2: content-stability check — always runs regardless of which
+        # path above completed. Waits until the response text stops changing
+        # for two consecutive seconds before declaring the response done.
+        # This catches stop-button false-positives and stale fallback signals.
+        self._wait_content_stable()
+        # Hard buffer — some UIs (e.g. Claude) signal completion slightly
+        # before the final tokens are flushed to the DOM.
+        if self._POST_RESPONSE_WAIT > 0:
+            time.sleep(self._POST_RESPONSE_WAIT)
+        logger.info("Response received.")
+
+    def _wait_content_stable(
+        self,
+        stable_ticks: int = 4,   # 4 × 0.5 s = 2 s without change = done
+        interval: float = 0.5,
+        max_wait: float = 30.0,  # safety ceiling — should never be reached
+    ) -> None:
+        """
+        Poll the last response node until its text has not changed for
+        *stable_ticks* consecutive intervals.
+
+        Seeded with the current content so already-finished responses return
+        in exactly stable_ticks × interval seconds (≈ 2 s by default).
+        Called at the end of wait_for_response on every path so that neither
+        a false-positive stop-button signal nor an early fallback signal can
+        cause a truncated scrape.
+        """
+        try:
+            # Seed with whatever is on screen right now.
+            try:
+                nodes = self.page.locator(self._selector("response_node")).all()
+                last  = nodes[-1].inner_text() if nodes else ""
+            except Exception:
+                last = ""
+
+            ticks    = 0
+            deadline = time.monotonic() + max_wait
+
+            while time.monotonic() < deadline:
+                time.sleep(interval)
+                try:
+                    nodes   = self.page.locator(self._selector("response_node")).all()
+                    current = nodes[-1].inner_text() if nodes else last
+                except Exception:
+                    current = last  # transient DOM error — hold position
+
+                if current and current == last:
+                    ticks += 1
+                    if ticks >= stable_ticks:
+                        return
+                else:
+                    ticks = 0
+                    last  = current
+
+            logger.warning("Content stability timeout — proceeding anyway.")
+        except Exception as exc:
+            logger.debug("Content stability check skipped: %s", exc)
 
     def rate_limit(self):
         """Sleep for a randomised duration to reduce bot-detection risk."""

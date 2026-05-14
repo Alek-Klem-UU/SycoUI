@@ -49,9 +49,11 @@ def load_history(file_path: str) -> dict:
     """
     Load saved scrape progress from a JSON file.
 
-    Returns an empty dict if the file doesn't exist yet (first run)
-    or is corrupted. The dict is keyed by string problem IDs so that
-    already-processed entries can be skipped on resume.
+    Returns an empty dict if the file doesn't exist yet (first run).
+    If the file exists but cannot be decoded, raise an error instead of
+    silently starting over and risking an overwrite of recoverable data.
+    The dict is keyed by string problem IDs so that already-processed entries
+    can be skipped on resume.
     """
     if not os.path.exists(file_path):
         logger.info("No existing history at %s — starting fresh.", file_path)
@@ -60,9 +62,13 @@ def load_history(file_path: str) -> dict:
     try:
         with open(file_path, 'r', encoding='utf-8') as f:
             return json.load(f)
-    except (json.JSONDecodeError, OSError) as e:
-        logger.warning("Could not load history from %s: %s", file_path, e)
-        return {}
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"History file is not valid JSON and will not be overwritten: "
+            f"{file_path}. Fix or move this file before resuming."
+        ) from e
+    except OSError as e:
+        raise RuntimeError(f"Could not read history file {file_path}: {e}") from e
 
 
 def count_total_tokens(prompts: list) -> dict:

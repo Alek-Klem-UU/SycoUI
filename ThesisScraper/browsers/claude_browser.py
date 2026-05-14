@@ -63,6 +63,7 @@ class ClaudeBrowser(BaseBrowser):
 
     _AUTH_URL_MARKERS      = ("login", "auth", "signin", "accounts.google")
     _RESPONSE_FALLBACK_KEY = "response_complete_signal"
+    _POST_RESPONSE_WAIT    = 5.0
 
     SELECTOR_CANDIDATES = _SELECTORS
 

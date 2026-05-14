@@ -2,7 +2,7 @@ from .api_base import BaseAPI
 
 
 class GeminiAPI(BaseAPI):
-    _MODEL_ID      = "gemini-2.5-flash"
+    _MODEL_ID      = "gemini-3-flash-preview"
     _DISPLAY_MODE  = "Fast"
     _PLATFORM_NAME = "Gemini"
 
@@ -14,8 +14,20 @@ class GeminiAPI(BaseAPI):
         return genai.Client(api_key=self._api_key)
 
     def _send(self, text: str) -> str:
+        from google.genai import types
+
+        config_kwargs = {
+          "thinking_config": types.ThinkingConfig(
+              thinking_level=types.ThinkingLevel.LOW,
+          ),
+        }
+
+        if self._temperature is not None:
+            config_kwargs["temperature"] = self._temperature
+
         response = self._client.models.generate_content(
-            model=self._MODEL_ID,
-            contents=text,
+          model=self._MODEL_ID,
+          contents=text,
+          config=types.GenerateContentConfig(**config_kwargs),
         )
         return response.text or ""
