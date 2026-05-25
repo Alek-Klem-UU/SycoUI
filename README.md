@@ -6,6 +6,10 @@ SycoUI is the data-collection tool used for the bachelor thesis *Comparing Sycop
 
 The project compares whether consumer web interfaces make large language models more socially sycophantic than the same providers' developer APIs. The study calls this behavioral difference the **Interface Effect**.
 
+## Paper
+
+The in-progress thesis paper is included in this repository as [main.pdf](ThesisScraper/main.pdf).
+
 ## Research Context
 
 Most sycophancy research evaluates models through developer APIs, but most users interact with AI systems through commercial web products. These interfaces can add hidden system prompts, persona layers, memory/context features, tool-routing logic, and product-level safety filters on top of the underlying model.
@@ -116,6 +120,7 @@ In API mode, the run starts immediately once the API key is available.
 
 ```text
 ThesisScraper/
+|-- main.pdf                 # In-progress thesis paper
 |-- main.py                  # Entry point and run orchestration
 |-- cli.py                   # Terminal menus and API-key prompt
 |-- data_processing.py       # Prompt loading, result persistence, token estimates
