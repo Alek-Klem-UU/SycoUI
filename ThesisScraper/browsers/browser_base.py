@@ -93,7 +93,7 @@ class BaseBrowser(ABC):
 
     # -- Subclass MAY override these -------------------------------------------
     _PLATFORM_NAME: str = "Unknown"
-    _WINDOW_WIDTH: int = 500
+    _WINDOW_WIDTH: int = 700
     _WINDOW_HEIGHT: int = 700
     _AUTH_URL_MARKERS: tuple = ("login", "signin", "auth")
     _STRIP_SELECTORS: str = "button, [role='button'], [aria-hidden='true']"

@@ -29,19 +29,32 @@ _SELECTORS = {
         "[data-testid='stop-button']",
     ],
     "model_selector": [
+        "button.__composer-pill[aria-haspopup='menu']:has-text('Instant')",
+        "button.__composer-pill[aria-haspopup='menu']",
         "[data-testid='model-switcher-dropdown-button']",
+        "button[data-testid*='model-switcher']",
         "button[aria-label='Model selector']",
+        "button[aria-label*='Model']",
         "button[aria-haspopup='menu'][id*='model']",
         "#model-switcher",
-        "button.text-token-text-primary span",
     ],
     "model_configure": [
         "[data-testid='model-configure-modal']",
         "[role='menuitem']:has-text('Configure')",
+        "[role='menuitem']:has-text('Customize')",
+        "[role='menuitem']:has-text('More models')",
+        "[role='option']:has-text('Configure')",
+        "[role='option']:has-text('Customize')",
+        "button:has-text('Configure')",
+        "button:has-text('Customize')",
     ],
     "model_config_combobox": [
         "button[role='combobox'][aria-labelledby='model-selection-label']",
+        "[role='dialog'] button[role='combobox']",
+        "[role='dialog'] [role='combobox']",
         "button[role='combobox']:has-text('Latest')",
+        "button[role='combobox']:has-text('Auto')",
+        "button[role='combobox']:has-text('5.3')",
         "button[role='combobox']:has-text('5.5')",
     ],
     "model_config_dialog": [
@@ -64,6 +77,7 @@ _SELECTORS = {
     ],
     "regenerate_button": [
         "button[aria-label='Regenerate']",
+        "button[aria-label*='Regenerate']",
         "[data-testid='regenerate-response-button']",
     ],
 }
@@ -74,12 +88,14 @@ class ChatGPTBrowser(BaseBrowser):
     _LOGIN_URL   = "https://chatgpt.com/"
     _SESSION_DIR = "chatgpt_ui_session"
     _PLATFORM_NAME = "ChatGPT"
-    _WINDOW_WIDTH  = 400
+    _WINDOW_WIDTH  = 700
 
     _AUTH_URL_MARKERS      = ("auth.openai.com", "login")
     _RESPONSE_FALLBACK_KEY = "regenerate_button"
 
     SELECTOR_CANDIDATES = _SELECTORS
+    TARGET_MODEL_LABEL = "GPT-5.3 Instant"
+    TARGET_MODEL_MATCHES = ("GPT-5.3 Instant", "5.3 Instant", "GPT-5.3", "5.3")
 
     DEFAULT_TIMEOUTS = {
         **BaseBrowser.DEFAULT_TIMEOUTS,
@@ -93,44 +109,95 @@ class ChatGPTBrowser(BaseBrowser):
     def select_gpt53_instant(self):
         """Open ChatGPT's model configuration UI and select GPT-5.3 Instant."""
         try:
-            selector = self.page.locator(self._selector("model_selector")).first
-            selector.wait_for(state="visible", timeout=20_000)
-            self._model_select_pause()
-            selector.click()
+            self._open_model_selector()
 
-            configure = self.page.locator(self._selector("model_configure")).first
-            configure.wait_for(state="visible", timeout=10_000)
-            self._model_select_pause()
-            configure.click()
+            if self._click_model_option(timeout=3_000):
+                logger.info("Selected ChatGPT %s from model picker.", self.TARGET_MODEL_LABEL)
+                return
 
-            combobox = self.page.locator(self._selector("model_config_combobox")).first
-            combobox.wait_for(state="visible", timeout=15_000)
+            self._click_visible_candidate("model_configure", timeout=10_000)
 
-            current = combobox.inner_text().strip()
-            if "5.3" in current:
+            combobox = self._visible_candidate("model_config_combobox", timeout=15_000)
+            current = self._clean_text(combobox.inner_text())
+            if self._is_target_model(current):
                 logger.info("ChatGPT model already configured as %s.", current)
                 self._close_model_config()
                 return
 
             self._model_select_pause()
             combobox.click()
-            option = self.page.locator("[role='option']").filter(has_text="5.3").first
-            option.wait_for(state="visible", timeout=15_000)
-            self._model_select_pause()
-            option.click()
+            if not self._click_model_option(timeout=15_000):
+                raise RuntimeError(
+                    f"Could not find a visible {self.TARGET_MODEL_LABEL} option "
+                    "in ChatGPT's model menu."
+                )
 
             # Give the UI a moment to persist the setting before closing.
             self._model_select_pause()
             self._close_model_config()
-            logger.info("Selected ChatGPT GPT-5.3 Instant in model configuration.")
+            logger.info("Selected ChatGPT %s in model configuration.", self.TARGET_MODEL_LABEL)
         except Exception as exc:
-            logger.error("Failed to select ChatGPT GPT-5.3 Instant: %s", exc)
+            logger.error("Failed to select ChatGPT %s: %s", self.TARGET_MODEL_LABEL, exc)
             raise
+
+    def _open_model_selector(self):
+        """Open ChatGPT's model selector without relying on cached broad selectors."""
+        selector = self._visible_candidate("model_selector", timeout=20_000)
+        self._model_select_pause()
+        selector.click()
+
+    def _visible_candidate(self, key: str, timeout: int = 5_000):
+        """Return the first visible locator for a selector key."""
+        last_exc = None
+        for candidate in self.SELECTOR_CANDIDATES.get(key, []):
+            locator = self.page.locator(candidate).first
+            try:
+                locator.wait_for(state="visible", timeout=timeout)
+                logger.debug("Visible selector resolved for '%s': %s", key, candidate)
+                return locator
+            except Exception as exc:
+                last_exc = exc
+        raise RuntimeError(
+            f"No visible ChatGPT selector for '{key}'. "
+            f"Tried: {self.SELECTOR_CANDIDATES.get(key, [])}."
+        ) from last_exc
+
+    def _click_visible_candidate(self, key: str, timeout: int = 5_000):
+        locator = self._visible_candidate(key, timeout=timeout)
+        self._model_select_pause()
+        locator.click()
+        return locator
+
+    def _click_model_option(self, timeout: int = 5_000) -> bool:
+        """Click the best visible target-model option in the open picker/listbox."""
+        deadline = time.monotonic() + (timeout / 1000)
+        option_selector = "[role='option'], [role='menuitem'], [cmdk-item], button"
+        for text in self.TARGET_MODEL_MATCHES:
+            remaining_ms = int((deadline - time.monotonic()) * 1000)
+            if remaining_ms <= 0:
+                return False
+            option = self.page.locator(option_selector).filter(has_text=text).first
+            try:
+                option.wait_for(state="visible", timeout=min(300, remaining_ms))
+                time.sleep(random.uniform(0.05, 0.15))
+                option.click()
+                return True
+            except Exception:
+                continue
+        return False
+
+    @classmethod
+    def _is_target_model(cls, text: str) -> bool:
+        return any(match in text for match in cls.TARGET_MODEL_MATCHES)
+
+    @staticmethod
+    def _clean_text(text: str) -> str:
+        return " ".join(text.split())
 
     @staticmethod
     def _model_select_pause():
         """Small jitter between model-picker interactions."""
-        time.sleep(random.uniform(1.0, 3.0))
+        time.sleep(random.uniform(0.25, 0.75))
 
     def _close_model_config(self):
         """Close the ChatGPT model configuration dialog if it is open."""
