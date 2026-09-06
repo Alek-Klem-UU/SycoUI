@@ -2,185 +2,68 @@
 
 # SycoUI
 
-SycoUI is the data-collection tool used for the bachelor thesis *Comparing Sycophantic Tendencies in Proprietary Interfaces versus Developer APIs* by Alek Klem at Utrecht University.
+**SycoUI** is a Python-based data-collection pipeline for comparing the behavior of large language models (LLMs) across consumer-facing user interfaces (UIs) and developer APIs.
 
-The project compares whether consumer web interfaces make large language models more socially sycophantic than the same providers' developer APIs. The study calls this behavioral difference the **Interface Effect**.
+It was developed at Utrecht University as part of a research project examining whether access mode affects **social sycophancy** in LLMs. The project evaluates ChatGPT, Claude, Gemini, and DeepSeek using matched prompts from the ELEPHANT benchmark.
 
-## Paper
-
-The in-progress thesis paper is included in this repository as [main.pdf](ThesisScraper/main.pdf).
+SycoUI supports standardized collection from both provider APIs and their consumer web interfaces, with incremental saving and resumable runs designed for long-running UI evaluations.
 
 ## Research Context
 
-Most sycophancy research evaluates models through developer APIs, but most users interact with AI systems through commercial web products. These interfaces can add hidden system prompts, persona layers, memory/context features, tool-routing logic, and product-level safety filters on top of the underlying model.
+Most behavioral evaluations of LLMs are conducted through developer APIs, even though many users interact with these systems through consumer-facing interfaces.
 
-SycoUI was built to test whether those interface layers change model behavior. It collects matched responses from browser interfaces and APIs, then stores them for later scoring on the ELEPHANT social-sycophancy benchmark.
+API and UI access are not necessarily behaviorally equivalent. Consumer interfaces may introduce additional system instructions, safety mechanisms, routing decisions, memory features, reasoning configurations, or other product-level interventions. As a result, evaluations conducted through APIs may not fully characterize the systems encountered by users.
 
-The thesis evaluates four consumer-facing systems:
+The associated study compares social sycophancy under API and consumer-UI access across four major LLMs.
 
-| Provider | Browser model | API model identifier | API default | API T = 0 | Browser runs |
+## Supported Models
+
+| Provider | Consumer UI model | API model identifier | API default | API T = 0 | UI repetitions |
 |---|---|---|---:|---:|---:|
-| OpenAI | ChatGPT-5.3 | `gpt-5.3-chat-latest` | yes | no | 3 per prompt |
-| Anthropic | Claude Sonnet 4.6 | `claude-sonnet-4-6` | yes | yes | 3 per prompt |
-| Google | Gemini 3 Flash | `gemini-3-flash-preview` | yes | yes | 3 per prompt |
-| DeepSeek | DeepSeek-V4-Flash | `deepseek-v4-flash` | yes | yes | 3 per prompt |
+| OpenAI | ChatGPT-5.3 | `gpt-5.3-chat-latest` | yes | no | 3 |
+| Anthropic | Claude Sonnet 4.6 | `claude-sonnet-4-6` | yes | yes | 3 |
+| Google | Gemini 3 Flash | `gemini-3-flash-preview` | yes | yes | 3 |
+| DeepSeek | DeepSeek-V4-Flash | `deepseek-v4-flash` | yes | yes | 3 |
 
-Browser data for AITA-YTA was collected from April 30 to May 4, 2026. Browser data for AITA-NTA and AITA-NTA-FLIPPED was collected from May 7 to May 16, 2026, with ChatGPT finishing on May 18, 2026 after OpenAI changed the browser default model and the automation had to reselect ChatGPT-5.3 manually.
+Reasoning configurations were matched across access conditions where provider controls allowed this:
 
-## What It Does
+- Gemini used low reasoning effort through the API to correspond to Fast mode in the consumer UI.
+- DeepSeek reasoning was disabled.
+- Claude extended reasoning was not enabled.
+- ChatGPT reasoning effort could not be directly controlled.
 
-SycoUI supports two collection modes:
+## What SycoUI Does
 
-- **Browser mode** opens a persistent Chromium session, waits for manual login, sends prompts through the commercial web UI, and scrapes the rendered response.
-- **API mode** calls the provider's developer API with the same prompt set and saves responses in the same result format.
+SycoUI supports two data-collection modes.
 
-Runs are saved incrementally after every prompt. If a run is interrupted, restarting the same model/mode skips completed prompts and retries incomplete ones.
+### Consumer UI mode
 
-The browser pipeline uses Patchright, a stealth-patched Playwright fork, plus human-like typing delays and rate-limit backoff. Each provider has a dedicated browser class with multiple selector candidates because commercial UIs change frequently.
+The pipeline opens a persistent Chromium browser session and submits prompts directly through the provider's consumer interface.
 
-## Benchmark and Datasets
+Provider-specific adapters handle:
 
-The study uses ELEPHANT, a benchmark for social sycophancy: cases where a model preserves the user's self-image instead of giving an honest assessment.
+- interface navigation;
+- prompt submission;
+- response extraction;
+- response-completion detection;
+- model selection or verification where possible;
+- retries for incomplete or failed collection attempts.
 
-SycoUI collects responses for two ELEPHANT subsets:
+Each provider has its own browser adapter because commercial interfaces differ substantially and may change over time.
 
-| Subset | Use | Sample |
-|---|---|---:|
-| `AITA-YTA` | Validation, indirectness, and framing | 1,000 prompts |
-| `AITA-NTA` + `AITA-NTA-FLIPPED` | Moral endorsement | 1,000 matched prompt pairs |
+### API mode
 
-The AITA-YTA subset contains posts where Reddit's r/AmITheAsshole community judged the poster to be at fault. If a model validates the poster anyway, that response can be scored as socially sycophantic.
+The same prompt sets can be submitted directly to provider APIs.
 
-The moral-endorsement subset presents the same conflict from both sides. A sycophantic model may endorse whoever is asking, even when the two perspectives are mutually inconsistent.
+Each API prompt is sent as an independent one-turn request so that conversational history does not carry over between observations. API responses are stored in the same general result format as consumer-UI responses.
 
-Responses are scored across four dimensions:
+Temporary API failures, such as rate limits or server errors, are retried automatically.
 
-| Dimension | What it measures |
-|---|---|
-| Validation | Whether the model affirms the user's feelings or position when that affirmation is unwarranted |
-| Indirectness | Whether the model hedges or softens criticism instead of giving clear advice |
-| Framing | Whether the model accepts a flawed premise instead of challenging the user's framing |
-| Moral endorsement | Whether the model sides with both parties when the same conflict is shown from opposite perspectives |
+## Resumable Data Collection
 
-## Thesis Findings
+SycoUI saves progress continuously during collection.
 
-The thesis finds evidence for an Interface Effect across all four evaluated models on at least one sycophancy dimension.
-
-- Claude shows significant browser increases across validation, indirectness, and framing.
-- Gemini shows significant browser gaps on validation, indirectness, and framing, although framing reverses direction: the browser is less sycophantic than API default on that dimension.
-- ChatGPT shows significant browser increases on indirectness and framing. Validation is near ceiling in both conditions.
-- DeepSeek shows no significant browser gap on validation or framing, a small significant browser increase on indirectness, and a strong reversal on moral endorsement.
-
-The largest AITA-YTA effect is ChatGPT-5.3 on framing: browser responses are estimated to be almost 49 times more likely to be sycophantic than API-default responses.
-
-These results suggest that API-only alignment evaluations can miss behavior introduced or amplified by consumer product interfaces.
-
-## Setup
-
-Requirements: Python 3.12+
-
-```bash
-cd ThesisScraper
-pip install -r requirements.txt
-```
-
-Install the Chromium browser used by Patchright for browser mode:
-
-```bash
-patchright install chromium
-```
-
-For API mode, provide the relevant provider key either through an environment variable or the hidden interactive prompt at startup.
-
-Supported environment variables:
-
-- `OPENAI_API_KEY`
-- `ANTHROPIC_API_KEY`
-- `GEMINI_API_KEY`
-- `DEEPSEEK_API_KEY`
-
-## Usage
-
-```bash
-cd ThesisScraper
-python main.py
-```
-
-The interactive menu asks for:
-
-- collection mode: browser or API
-- provider/model
-- dataset/subset size
-
-In browser mode, a Chromium window opens and pauses for login. After the chat interface is ready, press Enter in the terminal and the scraper proceeds automatically.
-
-In API mode, the run starts immediately once the API key is available.
-
-## Project Structure
-
-```text
-ThesisScraper/
-|-- main.pdf                 # In-progress thesis paper
-|-- main.py                  # Entry point and run orchestration
-|-- cli.py                   # Terminal menus and API-key prompt
-|-- data_processing.py       # Prompt loading, result persistence, token estimates
-|-- browsers/
-|   |-- browser_base.py      # Shared browser automation and retry behavior
-|   |-- chatgpt_browser.py   # chatgpt.com automation
-|   |-- claude_browser.py    # claude.ai automation
-|   |-- gemini_browser.py    # gemini.google.com automation
-|   |-- deepseek_browser.py  # chat.deepseek.com automation
-|   `-- utils.py             # HumanTypist and browser helpers
-|-- apis/
-|   |-- api_base.py          # Shared API client interface and retries
-|   |-- chatgpt_api.py       # OpenAI API client
-|   |-- claude_api.py        # Anthropic API client
-|   |-- gemini_api.py        # Google GenAI API client
-|   `-- deepseek_api.py      # DeepSeek API client
-|-- requirements.txt
-`-- RawData/
-    |-- DataSets/            # ELEPHANT prompt subsets
-    `-- SavedData/           # Collected model outputs by provider and mode
-```
-
-## Output Format
-
-Results are saved under:
-
-```text
-RawData/SavedData/<MODEL>/<MODE>/<dataset>.json
-```
-
-Each file is keyed by prompt ID:
+Before a prompt is processed, it is marked as:
 
 ```json
-{
-  "42": [
-    {
-      "turn": 1,
-      "user": "<prompt text>",
-      "model_output": "<model response>"
-    }
-  ],
-  "43": "IN PROGRESS"
-}
-```
-
-An `"IN PROGRESS"` entry means the run stopped before that prompt completed. It will be retried on the next run.
-
-## Notes
-
-- Browser sessions are stored in `*_ui_session/` folders and should not be committed.
-- Browser responses are collected three times per prompt because commercial web interfaces do not expose sampling parameters.
-- API default runs approximate each provider's normal API behavior; API T = 0 runs expose the model's greedy response where the provider supports it.
-- Thinking effort is matched where possible: Gemini uses low API thinking effort to match browser Fast mode, DeepSeek has thinking disabled, Claude does not use extended thinking by default, and ChatGPT thinking effort is not directly controllable.
-- Progress is persisted atomically with a temporary file and rename.
-- API keys are read from environment variables or hidden prompts and are never logged or persisted.
-
-## License
-
-This project is licensed under the [MIT License](LICENSE).
-
-## Acknowledgements
-
-The base code for this project was written by Alek Klem. Claude Code was used to supplement the project by assisting with code cleanup, refactoring, API-mode integration, and README drafting.
+"IN PROGRESS"
